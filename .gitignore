@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Pipeline data (captions, raw AI output, logs) — regenerate by rerunning the pipeline
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
