@@ -1,0 +1,44 @@
+# Local MySQL server running in Docker container for the pipeline and the web app.
+#
+#   docker compose up -d        start (first start also runs db/schema.sql)
+#   docker compose down         stop (data survives in the volume)
+#   docker compose down -v      stop AND delete all data (schema reruns next start)
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+
+    # reads ${} values from .env file
+    # least privilege: app gets access to only what it needs
+    #                  (i.e mysql image uses these 4 variables then creates a DB called fantano, plus an user fantano who has acces only to that database)
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+    # UTF8, accent-insensitive and case-insensitive
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+
+    # format: host-address:host-port:container-port (keeps database on my machine only)
+    ports:
+      - "127.0.0.1:${MYSQL_PORT}:3306"
+
+    # 1. holds named volume (storage where mysql keeps its data) for persistence when doing docker compose down
+    # 2. maps local ./db/schema.sql file into the container at a specific path (/docker-entrypiont...) only when data volume is empty
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+
+    # waits until mysql db is ready even if container is running (i.e CI tests must wait until db is ready)
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mysql_data:
