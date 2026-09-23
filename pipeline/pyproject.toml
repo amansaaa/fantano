@@ -1,0 +1,9 @@
+[project]
+name = "fantano-pipeline"
+version = "0.1.0"
+description = "Offline data pipeline: YouTube -> captions -> AI extraction -> MySQL"
+requires-python = ">=3.12"
+dependencies = [
+    "pymysql>=1.2.3",
+    "python-dotenv>=1.2.3",
+]
