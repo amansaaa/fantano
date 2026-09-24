@@ -83,7 +83,7 @@ FEAT_RE = re.compile(r"\s+(?:ft|feat)\.\s+(.+)$", re.IGNORECASE)
 def split_track_line(line: str) -> dict | None:
     """ "Joy Crookes - Painkiller ft. Denzel Curry"
         -> {"artist": "Joy Crookes", "title": "Painkiller", "featured": ["Denzel Curry"]} """
-    # Splits string into first occurence of " - " and wlays returns three pieces (artist, seperator, title)
+    # Splits string into first occurence of " - " and always returns three pieces (artist, seperator, title)
     artist, sep, title = line.partition(" - ")
     if not sep or not artist.strip() or not title.strip():
         return None
