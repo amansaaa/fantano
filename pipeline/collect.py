@@ -3,9 +3,6 @@
 Stores title, description, date, duration, type and subject that it works out from the title. 
 Never downloads the captions or calls the LLM; uses regex for string parsing.
 
-    uv run collect.py              # all uploads (a few hundred quota units out of 10,000/day)
-    uv run collect.py --max 100    # only the newest 100, handy while testing
-
 Safe to rerun: existing rows get fresh metadata, but their pipeline statuses are never touched.
 """
 

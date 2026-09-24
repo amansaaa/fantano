@@ -1,7 +1,7 @@
 """MySQL connection helper shared by every pipeline stage to get database connections."""
 
 import os
-from pathlib import Path    # object oriented way to work with filesystme paths
+from pathlib import Path    # object oriented way to work with filesystem paths
 
 import pymysql
 from dotenv import load_dotenv
