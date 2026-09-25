@@ -1,6 +1,5 @@
 """Sends a HTTP request to Gemini's API w/ prompt, text (numbered transcript), and schema we expect enforced by Gemini"""
 
-
 import json
 import os
 import time
@@ -20,11 +19,10 @@ class LLMUnavailable(Exception):
 
 
 def generate_json(prompt: str, text: str, schema: dict) -> dict:
-    """Sends instructions + input text to LLM; expecting a dict back
+    """Sends instructions + input text to LLM; expecting a dict back.
 
     Raises LLMUnavailable for temporary problem, and ValueError when the answer
-    itself is unusable (mark that video 'failed').
-    """
+    itself is unusable (mark that video 'failed')."""
     model = os.environ["GEMINI_MODEL"]
     body = {
         "systemInstruction": {"parts": [{"text": prompt}]},          # the rules
@@ -46,7 +44,6 @@ def generate_json(prompt: str, text: str, schema: dict) -> dict:
             error = f"network: {e}"
         # Otherwise if not a network error (either client success (200) or client error (400))
         else:
-            # Raise status code
             if r.status_code == 200:
                 return _parse(r.json())
             if r.status_code != 429 and r.status_code < 500:
