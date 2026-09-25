@@ -1,65 +1,89 @@
-"""Read the description Fantano writes in a fixed format at the bottom.
+"""reads the facts Fantano writes in a fixed format at the bottom of his video descriptions. no ai.
 
-Review description:                      Roundup description:
-    FAV TRACKS: DIFFERENT RELIGION, ...      !!!BEST TRACKS THIS WEEK!!!
-    LEAST FAV TRACK: ORBIT                   Godflesh - Master and Slave
-    5/10                                     ...meh...
-                                             Troye Sivan - Party
-                                             !!!WORST TRACKS THIS WEEK!!!
-                                             2hollis - Sex
+a review's description ends like this:     a roundup's description has lists like this:
 
-The description stays consistent for almost all of his videos across the years depending on the format.
-This allows us to avoid using an LLM which saves token usage, and ensures we don't hallunicate any data as we're using regex. 
+    FAV TRACKS: DIFFERENT RELIGION, ...        !!!BEST TRACKS THIS WEEK!!!
+    LEAST FAV TRACK: ORBIT                     Godflesh - Master and Slave
+    5/10                                       ...meh...
+                                               Troye Sivan - Party
+                                               !!!WORST TRACKS THIS WEEK!!!
+                                               2hollis - Sex
 
-Every function here is pure: description text in, facts out. If a pattern doesn't match, 
-the result is empty (None or []) as we never guess.
+he's kept this format for years (on the newest 1,000 videos: 97% of reviews have a score, 93%
+have fav tracks, and every roundup has its lists), so plain regex reads it exactly. that's free,
+and it can't make anything up the way an ai could.
+
+every function here is pure: description text in, facts out. when a pattern doesn't match,
+the answer is empty (None or []). we never guess. extract.py (stage 3) is the only caller.
 """
 
 import re
 
-# reviews.score_text is VARCHAR(32)
-SCORE_MAX_LEN = 32  
+# reviews.score_text in the database is VARCHAR(32)
+SCORE_MAX_LENGTH = 32
 
-# Splits description into lines and strips whitespace from each
-def _lines(description: str) -> list[str]:
+# the score is everything up to "/10" on its line. for albums he loved, a link follows on the
+# same line ("8/10 https://theneedledrop.com/loved-list/2025/"), so we stop right after "/10"
+SCORE_PATTERN = re.compile(r"^(.*?\S/10)(?=\s|$)")
+
+# the header lines that start each roundup list. they allow for the typos seen in real
+# descriptions, like "!!!BEST TRACK THIS WEEK!!!", a missing closing "!!!", and "…meh…" vs "...meh..."
+ROUNDUP_SECTION_HEADERS = [
+    ("best", re.compile(r"^!+\s*BEST TRACKS? THIS WEEK", re.IGNORECASE)),
+    ("meh", re.compile(r"^[.…]+\s*meh\s*[.…]+$", re.IGNORECASE)),
+    ("worst", re.compile(r"^!+\s*WORST TRACKS? THIS WEEK", re.IGNORECASE)),
+]
+
+# " ft. Denzel Curry" or " feat. Denzel Curry" at the end of a track title
+FEATURED_PATTERN = re.compile(r"\s+(?:ft|feat)\.\s+(.+)$", re.IGNORECASE)
+
+
+def clean_lines(description: str) -> list[str]:
+    """splits a description into lines, with the whitespace trimmed off each one."""
     return [line.strip() for line in description.splitlines()]
 
 
-# --- Album and track reviews ---
-
-# Pulls Fantano's score ("7/10) which is usualy on an individal line in the description
-# Sometimes for albums he loved, he puts a URl next to the score; this regex handles that case
-SCORE_RE = re.compile(r"^(.*?\S/10)(?=\s|$)")
-
+# --- album and track reviews ---
 
 def parse_score(description: str) -> str | None:
-    """Scans description line by line, collects every score it finds and joins them into one string.
-    
-    This handles both the normal case of just one score for an album and a double album which
-    has two ("HABIBTI: 7/10", "MAID OF HONOUR: 6/10"), joined with " · "."""
+    """finds his score, exactly as he wrote it: "5/10", "8/10", "CLASSIC/10".
+
+    a double album gets two ("HABIBTI: 7/10" and "MAID OF HONOUR: 6/10"), which are joined
+    with " · ". returns None if there's no score, or if it's too long for the database
+    column (one description has glitch-art text before its "/10").
+    """
     scores = []
-    for line in _lines(description):
-        m = SCORE_RE.match(line)
+    for line in clean_lines(description):
+        # a link line can contain "/10" too, so skip anything that is itself a url
+        if line.startswith("http"):
+            continue
+        match = SCORE_PATTERN.match(line)
+        if match:
+            scores.append(match[1])
 
-        # If we found a score (not URL) then add to scores
-        if m and not line.startswith("http"):
-            scores.append(m[1])
-    text = " · ".join(scores)
-    return text if 0 < len(text) <= SCORE_MAX_LEN else None
+    score_text = " · ".join(scores)
+    if 0 < len(score_text) <= SCORE_MAX_LENGTH:
+        return score_text
+    return None
 
 
-def parse_track_list(description: str, label: str) -> list[str]:
-    """Tracks after "FAV TRACKS:" or "LEAST FAV TRACK:" (label = "FAV" or "LEAST FAV")"""
-    # ^ and $ anchor the whole line, so "FAV" doesn't also match the "LEAST FAV" line.
-    pattern = rf"^{label} TRACKS?:\s*(.+)$"
-    for line in _lines(description):
-        m = re.match(pattern, line, re.IGNORECASE)
-        if m:
-            return [t.strip() for t in m[1].split(",") if t.strip()]
+def parse_track_list(description: str, prefix: str) -> list[str]:
+    """the comma-separated tracks after "FAV TRACKS:" (prefix "FAV") or "LEAST FAV TRACK:"
+    (prefix "LEAST FAV"), e.g. "FAV TRACKS: DIFFERENT RELIGION, REDLIGHTS" ->
+    ["DIFFERENT RELIGION", "REDLIGHTS"]. returns [] if the line isn't there."""
+    # ^ pins the prefix to the start of the line, so "FAV" doesn't also match "LEAST FAV TRACK:"
+    pattern = rf"^{prefix} TRACKS?:\s*(.+)$"
+    for line in clean_lines(description):
+        match = re.match(pattern, line, re.IGNORECASE)
+        if match:
+            tracks = [track.strip() for track in match[1].split(",")]
+            return [track for track in tracks if track]
     return []
 
 
 def parse_review(description: str) -> dict:
+    """everything we read from a review's description, as one dict:
+    {"score_text": "5/10", "fav_tracks": [...], "least_fav": [...]}."""
     return {
         "score_text": parse_score(description),
         "fav_tracks": parse_track_list(description, "FAV"),
@@ -67,56 +91,74 @@ def parse_review(description: str) -> dict:
     }
 
 
-# --- Weekly Track Roundups ---
+# --- weekly track roundups ---
 
-# List of (name, pattern) pairs for each section used to detect which section the header is for
-SECTION_MARKERS = [
-    ("best", re.compile(r"^!+\s*BEST TRACKS? THIS WEEK", re.IGNORECASE)),
-    ("meh", re.compile(r"^[.…]+\s*meh\s*[.…]+$", re.IGNORECASE)),
-    ("worst", re.compile(r"^!+\s*WORST TRACKS? THIS WEEK", re.IGNORECASE)),
-]
-
-# Detects featured artist on a track title
-FEAT_RE = re.compile(r"\s+(?:ft|feat)\.\s+(.+)$", re.IGNORECASE)
+def find_section_header(line: str) -> str | None:
+    """if this line starts a roundup list, returns which one ("best", "meh", or "worst").
+    otherwise None."""
+    for section, header_pattern in ROUNDUP_SECTION_HEADERS:
+        if header_pattern.match(line):
+            return section
+    return None
 
 
 def split_track_line(line: str) -> dict | None:
-    """ "Joy Crookes - Painkiller ft. Denzel Curry"
-        -> {"artist": "Joy Crookes", "title": "Painkiller", "featured": ["Denzel Curry"]} """
-    # Splits string into first occurence of " - " and always returns three pieces (artist, seperator, title)
-    artist, sep, title = line.partition(" - ")
-    if not sep or not artist.strip() or not title.strip():
-        return None
-    featured = []
-    m = FEAT_RE.search(title)
+    """splits one roundup list line into its parts:
 
-    # Add featured artists if they exist
-    if m:
-        featured = [a.strip() for a in re.split(r",\s*|\s+&\s+", m[1]) if a.strip()]
-        title = title[: m.start()]
-    return {"artist": artist.strip(), "title": title.strip(), "featured": featured}
+        "Joy Crookes - Painkiller ft. Denzel Curry"
+        -> {"artist": "Joy Crookes", "title": "Painkiller", "featured": ["Denzel Curry"]}
+
+    returns None if the line isn't "artist - title" shaped.
+    """
+    # partition splits on the first " - " only, so a dash inside the title stays in the title
+    artist, separator, title = line.partition(" - ")
+    if not separator or not artist.strip() or not title.strip():
+        return None
+
+    featured_artists = []
+    featured_match = FEATURED_PATTERN.search(title)
+    if featured_match:
+        # "Bill Callahan & Chris Thile" or "A, B" -> one entry per artist
+        names = re.split(r",\s*|\s+&\s+", featured_match[1])
+        featured_artists = [name.strip() for name in names if name.strip()]
+        # cut the "ft. ..." part off the title
+        title = title[:featured_match.start()]
+
+    return {"artist": artist.strip(), "title": title.strip(), "featured": featured_artists}
 
 
 def parse_roundup(description: str) -> dict:
-    """Roundup video descriptions follow a different format: this function handles that case.
-    Tracks from the best / meh / worst lists, in order with each tagged with its review score."""
-    tracks, unparsed, verdict = [], [], None
-    for line in _lines(description):
-        marker = next((name for name, rx in SECTION_MARKERS if rx.match(line)), None)
+    """reads the best / meh / worst lists from a roundup's description, top to bottom.
 
-        # Found the header so we can update the verdict to that section 
-        if marker:
-            verdict = marker
+    each track comes back with its artist, title, featured artists, and verdict (the list it
+    was on). lines under a header that don't look like "artist - title" land in "unparsed",
+    so nothing gets guessed:
 
-        # "=====" line ends the lists
-        elif line.startswith("==="):          
+        {"tracks": [{"artist": ..., "title": ..., "featured": [...], "verdict": "best"}, ...],
+         "unparsed": [...]}
+    """
+    tracks = []
+    unparsed_lines = []
+    current_section = None  # stays None until we hit the first list header
+
+    for line in clean_lines(description):
+        section = find_section_header(line)
+        if section:
+            current_section = section
+            continue
+
+        # the "=====" divider comes right after the lists, so we're done
+        if line.startswith("==="):
             break
 
-        # Each track is followed by its link
-        elif verdict and line and not line.startswith("http"):   
-            track = split_track_line(line)
-            if track:
-                tracks.append({**track, "verdict": verdict})
-            else:
-                unparsed.append(line)
-    return {"tracks": tracks, "unparsed": unparsed}
+        # skip anything before the first header, blank lines, and the link under each track
+        if current_section is None or not line or line.startswith("http"):
+            continue
+
+        track = split_track_line(line)
+        if track:
+            tracks.append({**track, "verdict": current_section})
+        else:
+            unparsed_lines.append(line)
+
+    return {"tracks": tracks, "unparsed": unparsed_lines}

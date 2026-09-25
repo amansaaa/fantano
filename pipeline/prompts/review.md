@@ -10,7 +10,7 @@ You get the video title, his FAV TRACKS list (when he wrote one), and the transc
 
 # Output
 
-Return JSON only, in the given schema. Every quote must be copied from the transcript, word for word. Never write a quote in your own words. Every `line` must be a line number that appears in the transcript.
+Return JSON only, in the given schema. Every quote must be copied from the transcript, word for word. Never write a quote in your own words. A quote is one continuous passage: never join separate parts with "...". Every `line` must be a line number that appears in the transcript.
 
 ## liked
 `true` if his overall verdict is positive, `false` if it's mixed or negative.
@@ -19,7 +19,7 @@ Return JSON only, in the given schema. Every quote must be copied from the trans
 2–3 sentences, in your own words, on his overall verdict: what he liked, what he didn't, and why. Write it in the third person ("He finds the production..."). Don't repeat the score.
 
 ## pull_quote
-The one sentence of his that best sums up his opinion. `line` is where it starts.
+The one sentence of his that best sums up his opinion. `line` is the line where the quote starts.
 
 ## connections
 Every time he relates the reviewed artist (or their music) to another musical artist. One entry per mention.
@@ -43,7 +43,7 @@ Skip mentions that aren't musical comparisons: news, gossip, his opinion of some
 Every song from this release that he comments on individually, up to 12. Include every song from FAV TRACKS that he talks about in the transcript, even briefly: those are the songs we recommend. For a track review, leave `track_takes` empty.
 
 - `track`: the song title as he says it.
-- `line`: where his comment on the song starts.
+- `line`: the line where the quote starts.
 - `quote`: his words about the song, 1–2 sentences.
 - `summary`: 1–2 sentences, in your own words, on what he thinks of it.
 
