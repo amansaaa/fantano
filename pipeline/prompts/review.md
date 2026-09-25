@@ -2,11 +2,11 @@ You are extracting facts from the transcript of an Anthony Fantano (theneedledro
 
 # Input
 
-You get the video title and the transcript. Each transcript line looks like this:
+You get the video title, his FAV TRACKS list (when he wrote one), and the transcript. Each transcript line looks like this:
 
-    [44 @ 3:10] which honestly gives me some frank ocean
+    [44 @ 3:10] and the production on this track is
 
-`44` is the line number and `3:10` is when it's said. The transcript comes from YouTube auto-captions, so artist names are often misheard (for example "Ay Chike" for "AZ Chike").
+`44` is the line number and `3:10` is when it's said. The transcript comes from YouTube auto-captions, so artist names are often misheard.
 
 # Output
 
@@ -28,19 +28,23 @@ Every time he relates the reviewed artist (or their music) to another musical ar
 - `heard_as`: the name exactly as it appears in the transcript, misspellings included.
 - `about_artist`: the artist being discussed when he made the link, usually the reviewed artist.
 - `label`: exactly one of:
-  - `sounds_like`: the music resembles the other artist ("gives me Frank Ocean vibes", "very Radiohead").
+  - `sounds_like`: the music resembles the other artist ("gives me [artist] vibes", "very [artist]").
   - `influenced_by`: the artist draws on, was shaped by, or pays tribute to the other artist.
-  - `contrast`: he compares them to say they're different, or that the other artist does it better or worse ("unlike Drake, he actually has bars").
+  - `contrast`: he compares them to say they're different, or that the other artist does it better or worse ("unlike [artist], he actually has bars").
   - `collaborator`: the other artist actually worked on the music (a feature, a producer, a co-writer).
 - `line`: the line where the other artist's name is spoken.
 - `quote`: his words around that name, 1–2 sentences, starting no more than 2 lines before `line`.
 
-Skip mentions that aren't musical comparisons: news, gossip, his own opinions of a person, or other videos he's plugging ("I saw Frank Ocean memes all week", "check out my Drake review").
+Every featured artist he names on this release ("with [artist]", "featuring [artist]") is a `collaborator` connection, with `about_artist` = the reviewed artist. A band membership ("[person] of [band]") is not a connection; the connection is to the featured person.
+
+Skip mentions that aren't musical comparisons: news, gossip, his opinion of someone as a person, or plugs for his other videos.
 
 ## track_takes
-Songs from this release that he talks about individually. At most 8, prioritizing the ones he says the most about.
+Every song from this release that he comments on individually, up to 12. Include every song from FAV TRACKS that he talks about in the transcript, even briefly: those are the songs we recommend. For a track review, leave `track_takes` empty.
 
 - `track`: the song title as he says it.
 - `line`: where his comment on the song starts.
 - `quote`: his words about the song, 1–2 sentences.
 - `summary`: 1–2 sentences, in your own words, on what he thinks of it.
+
+The examples above use [artist] as a placeholder. Only report artists whose names actually appear in this transcript.
