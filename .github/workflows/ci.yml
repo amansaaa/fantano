@@ -9,7 +9,7 @@
 # no API keys or secrets are used here: the tests never touch YouTube, Gemini, or a real database.
 # to run the same checks on your mac:
 #   cd pipeline && uv run ruff check . && uv run pytest
-#   cd web && npm run lint && npx tsc --noEmit && npm run build
+#   cd web && npm run lint && npm run typecheck && npm run build
 
 name: CI
 
@@ -106,8 +106,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # next writes route types like LayoutProps into .next/types/ during dev and build. a fresh
+      # checkout has no .next/, so typegen creates them first or tsc can't find them
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       # no database here on purpose: every page that reads MySQL is rendered per request,
       # so the build never runs a query. if one ever did, this step would fail
