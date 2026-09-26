@@ -36,7 +36,7 @@ PAGE_SIZE = 50
 # that makes them easy to test, and it keeps the api functions below thin
 
 def classify_title(title: str) -> str:
-    """works out the video type from its title alone: album_review, track_review, roundup, or other. 
+    """works out the video type from its title alone: album_review, track_review, roundup, or other.
     the order of the checks matters, because a roundup title contains the word "track" too."""
     upper_title = title.upper()
 
@@ -88,7 +88,7 @@ def parse_duration(iso_duration: str) -> int:
 # --- talking to the YouTube Data API ---
 
 def get_uploads_playlist_id(client: httpx.Client) -> str:
-    """finds the channel's hidden "uploads" playlist, which holds every video it has posted, newest first. 
+    """finds the channel's hidden "uploads" playlist, which holds every video it has posted, newest first.
     the api has no cheap "list every video on this channel" call, so walking
     this playlist is the standard way to do it. costs 1 quota unit."""
     response = client.get("/channels", params={"part": "contentDetails", "forHandle": CHANNEL_HANDLE})

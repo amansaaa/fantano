@@ -10,3 +10,21 @@ dependencies = [
     "rapidfuzz>=3.14.6",
     "youtube-transcript-api>=1.2.4",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
+
+[tool.pytest.ini_options]
+# tests import the pipeline files directly (from collect import classify_title), so put this folder on the path
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# E/W: style problems, F: real bugs (unused imports, undefined names), I: import order
+select = ["E", "W", "F", "I"]
