@@ -1,5 +1,5 @@
 /**
- * tests for src/lib/recommend.ts: the round-robin rule behind "N Tracks Fantano recommends".
+ * tests for src/lib/recommend.ts: the round-robin rule behind "N songs Fantano liked by these artists".
  * each test is one part of the rule: grid order, skipping contrast, the cap, grouping, and
  * one row per song.
  */
@@ -13,7 +13,7 @@ import type { EndorsedTrack, Label, SimilarArtist } from "../src/lib/types";
 function makeArtist(id: number, label: Label = "sounds_like"): SimilarArtist {
   return {
     id, name: `artist ${id}`, image_url: null, video_count: 1, label,
-    link_from_id: 1, link_start_s: 10, link_video_id: "abc123XYZ00", link_video_title: "a video",
+    link_video_id: "abc123XYZ00", link_video_title: "a video",
   };
 }
 
@@ -21,7 +21,7 @@ function makeArtist(id: number, label: Label = "sounds_like"): SimilarArtist {
 function makeTrack(trackId: number, artistId: number, videoId = "abc123XYZ00"): EndorsedTrack {
   return {
     track_id: trackId, title: `song ${trackId}`, cover_url: null, artist_id: artistId,
-    source: "best_track", summary: null, quote: null, start_s: null,
+    source: "best_track",
     video_id: videoId, video_title: "a video", review_release_title: null,
   };
 }

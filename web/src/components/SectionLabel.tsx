@@ -1,8 +1,8 @@
 /**
- * the small muted blue caps heading above each section ("SIMILAR ARTISTS ACCORDING TO FANTANO").
+ * the small muted blue caps heading above each section ("ARTISTS CONNECTED TO TRAVIS SCOTT").
  *
  * usage:
- *   <SectionLabel>12 Tracks Fantano recommends</SectionLabel>
+ *   <SectionLabel>12 songs Fantano liked by these artists</SectionLabel>
  */
 
 export default function SectionLabel({ children }: { children: React.ReactNode }) {
