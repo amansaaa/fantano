@@ -1,0 +1,81 @@
+# CI: checks every push and pull request, so a broken change shows up as a red x on GitHub
+# instead of being found later while running the pipeline.
+#
+# two jobs, they run at the same time:
+#   pipeline - installs the exact locked packages, runs the linter, then runs all the tests
+#   schema   - starts a real MySQL 8.4 and loads db/schema.sql into it, to prove the tables still build
+#
+# no API keys or secrets are used here: the tests never touch YouTube, Gemini, or a real database.
+# to run the same checks on your mac: cd pipeline && uv run ruff check . && uv run pytest
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# a new push to the same branch cancels the older run that's still going, no point finishing it
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# the jobs only need to read the code
+permissions:
+  contents: read
+
+jobs:
+  # --- lint + tests for the python pipeline ---
+  pipeline:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      # --locked fails if uv.lock doesn't match pyproject.toml, so a forgotten lock update gets caught here
+      - name: Install packages
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      # every test feeds a known input to the real code and checks the output we expect
+      - name: Test
+        run: uv run pytest
+
+  # --- the schema loads into a real MySQL 8.4 ---
+  schema:
+    runs-on: ubuntu-latest
+    services:
+      # same image as docker-compose.yml. these passwords only exist inside this throwaway container
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root
+          MYSQL_DATABASE: fantano
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v7
+
+      # runs the mysql client inside the service container, so it's the 8.4 client, not whatever the runner has
+      - name: Load schema.sql
+        run: docker exec -i ${{ job.services.mysql.id }} mysql -uroot -pci-root fantano < db/schema.sql
+
+      # all 7 tables should exist. if one CREATE TABLE fails, the step above already fails, this is a second check
+      - name: Check all 7 tables exist
+        run: |
+          table_count=$(docker exec ${{ job.services.mysql.id }} mysql -uroot -pci-root -N -e \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'fantano'")
+          echo "tables: $table_count"
+          test "$table_count" -eq 7

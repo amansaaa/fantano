@@ -9,6 +9,10 @@ __pycache__/
 *.pyc
 .venv/
 
+# tool caches
+.pytest_cache/
+.ruff_cache/
+
 # OS
 .DS_Store
 
