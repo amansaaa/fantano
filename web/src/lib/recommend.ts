@@ -1,7 +1,7 @@
 /**
- * the "N Tracks Fantano recommends" rule (CLAUDE.md §6), as one pure function:
+ * the "N songs Fantano liked by these artists" rule (CLAUDE.md §6), as one pure function:
  *
- *   pick songs round-robin across the similar artists (in grid order, skipping cards labeled
+ *   pick songs round-robin across the connected artists (in grid order, skipping cards labeled
  *   Contrast) until there are 12, then show each artist's songs together.
  *
  * no database here, so it's tested in tests/recommend.test.ts.

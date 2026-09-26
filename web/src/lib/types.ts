@@ -22,7 +22,11 @@ export type HomeCover = {
 
 // --- the artist page ---
 
-/** how he related two artists (connections.label). */
+/**
+ * how two artists are linked (connections.label, same enum as schema.sql). every link on the
+ * site is a written "ft." credit, so it's always "collaborator" in practice: the other three
+ * need captions, which YouTube rate limits (CLAUDE.md §12).
+ */
 export type Label = "sounds_like" | "influenced_by" | "contrast" | "collaborator";
 
 /** the artist the page is about. */
@@ -35,9 +39,8 @@ export type Artist = {
 };
 
 /**
- * one review in the review box. an album review has a kind, a track review has kind = null.
- * summary and quote are null until the video's captions have been through the ai; until then
- * the box shows fav_tracks (from the description) instead.
+ * one review in the review box, all from the video's title and description. an album review
+ * has a kind, a track review has kind = null.
  */
 export type Review = {
   video_id: string;
@@ -45,15 +48,13 @@ export type Review = {
   title: string;
   kind: "album" | "ep" | "mixtape" | null;
   score_text: string | null;
-  summary: string | null;
-  quote: string | null;
-  quote_start_s: number | null;
   fav_tracks: string[];
 };
 
 /**
- * one card in the similar artists grid: another artist linked to this one, plus the newest
- * link with the card's label (for the gray "Fantano linked A → B" line in the track list).
+ * one card in the connected artists grid: another artist who shares a song credit with this
+ * one, plus the newest video that credits them together (for the gray "Why X" line in the
+ * track list).
  */
 export type SimilarArtist = {
   id: number;
@@ -61,40 +62,22 @@ export type SimilarArtist = {
   image_url: string | null;
   video_count: number;
   label: Label;
-  link_from_id: number;
-  // null for a written "ft." credit: he never said it, it's in a track list
-  link_start_s: number | null;
   link_video_id: string;
   link_video_title: string;
 };
 
-/** one song he liked (an endorsement), with where he said so. */
+/** one song he liked (an endorsement), and the video whose list it's on. */
 export type EndorsedTrack = {
   track_id: number;
   title: string;
   cover_url: string | null;
   artist_id: number;
   source: "fav_track" | "best_track" | "track_review";
-  summary: string | null;
-  quote: string | null;
-  start_s: number | null;
   video_id: string;
   video_title: string;
   // the album whose review listed it as a fav track (null for roundups)
   review_release_title: string | null;
 };
 
-/** a row in the track list: the song plus the similar artist it came through. */
+/** a row in the track list: the song plus the connected artist it came through. */
 export type RecommendedTrack = EndorsedTrack & { artist: SimilarArtist };
-
-/** one spoken mention of an artist he never reviewed. */
-export type Mention = {
-  other_id: number;
-  other_name: string;
-  from_artist_id: number;
-  label: Label;
-  quote: string | null;
-  start_s: number;
-  video_id: string;
-  video_title: string;
-};

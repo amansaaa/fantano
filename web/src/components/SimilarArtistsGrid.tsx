@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * the "Similar artists according to Fantano" grid: a photo, name, and label for each linked
- * artist, already ranked by the sql (most videos first). the top 12 show, and "Show all N"
- * reveals the rest. each card opens that artist's page.
+ * the "Artists connected to X" grid: a photo, name, and label for each artist who shares a
+ * song credit with this one ("Sheck Wes - ILMB ft. Travis Scott" in a roundup), already ranked
+ * by the sql (most videos first). the top 12 show, and "Show all N" reveals the rest. each card
+ * opens that artist's page.
  *
  * usage:
- *   <SimilarArtistsGrid artists={similarArtists} artistName="Phoebe Bridgers" />
+ *   <SimilarArtistsGrid artists={similarArtists} />
  */
 
 import Link from "next/link";
@@ -20,16 +21,11 @@ const CARDS_SHOWN_AT_FIRST = 12;
 // the biggest a grid photo gets (6 across on a wide screen)
 const CARD_PHOTO_PX = 140;
 
-type Props = {
-  artists: SimilarArtist[];
-  artistName: string;
-};
-
-export default function SimilarArtistsGrid({ artists, artistName }: Props) {
+export default function SimilarArtistsGrid({ artists }: { artists: SimilarArtist[] }) {
   const [showAll, setShowAll] = useState(false);
 
   if (artists.length === 0) {
-    return <p className="text-sm text-muted">He hasn’t linked {artistName} to other artists yet.</p>;
+    return <p className="text-sm text-muted">No connected artists yet.</p>;
   }
 
   const shown = showAll ? artists : artists.slice(0, CARDS_SHOWN_AT_FIRST);

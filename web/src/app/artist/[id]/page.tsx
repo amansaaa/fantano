@@ -1,11 +1,13 @@
 /**
  * the artist page, /artist/{id}.
  *
+ * everything here comes from video titles and descriptions (no captions: YouTube rate limits
+ * them, see CLAUDE.md §12).
+ *
  * steps:
  *   1. look up the artist (a missing or non-numeric id shows the not-found page)
- *   2. in parallel: their reviews, the similar artists grid, and (for artists he only
- *      mentioned) every spoken mention
- *   3. the songs he liked by the similar artists, then pickRecommendedTracks() picks up to 12
+ *   2. in parallel: their reviews and the connected artists grid (who they share song credits with)
+ *   3. the songs he liked by those artists, then pickRecommendedTracks() picks up to 12
  *
  * left column: photo, name, review box. right column: the grid, then the track list.
  * on phones it's one column in the same order.
@@ -18,15 +20,13 @@ import { notFound } from "next/navigation";
 
 import ArtistPhoto from "@/components/ArtistPhoto";
 import BackLink from "@/components/BackLink";
-import MentionList from "@/components/MentionList";
 import ReviewCarousel from "@/components/ReviewCarousel";
 import SearchBox from "@/components/SearchBox";
 import SectionLabel from "@/components/SectionLabel";
 import SimilarArtistsGrid from "@/components/SimilarArtistsGrid";
 import TrackList from "@/components/TrackList";
-import { getArtist, getEndorsedTracks, getMentions, getReviews, getSimilarArtists } from "@/lib/artist-queries";
+import { getArtist, getEndorsedTracks, getReviews, getSimilarArtists } from "@/lib/artist-queries";
 import { pickRecommendedTracks } from "@/lib/recommend";
-import type { Mention } from "@/lib/types";
 
 // the big photo is 320px wide at most
 const PHOTO_PX = 320;
@@ -57,13 +57,7 @@ export default async function ArtistPage({ params }: PageProps<"/artist/[id]">) 
     notFound();
   }
 
-  const isReviewed = artist.is_reviewed === 1;
-  const noMentions: Mention[] = [];
-  const [reviews, similarArtists, mentions] = await Promise.all([
-    getReviews(artist.id),
-    getSimilarArtists(artist.id),
-    isReviewed ? noMentions : getMentions(artist.id),
-  ]);
+  const [reviews, similarArtists] = await Promise.all([getReviews(artist.id), getSimilarArtists(artist.id)]);
 
   // contrast cards never contribute songs, so there's no point fetching theirs
   const songArtistIds = similarArtists.filter((similar) => similar.label !== "contrast").map((similar) => similar.id);
@@ -95,21 +89,20 @@ export default async function ArtistPage({ params }: PageProps<"/artist/[id]">) 
             <ReviewCarousel key={artist.id} reviews={reviews} />
           ) : (
             <p className="text-sm leading-relaxed text-muted">
-              Fantano hasn’t reviewed {artist.name} yet. This page is built from the videos where he mentions or credits them.
+              Fantano hasn’t reviewed {artist.name} yet. This page is built from the song credits in his videos.
             </p>
           )}
         </aside>
 
-        {/* --- right: who he linked them to, and the songs he'd recommend --- */}
+        {/* --- right: who they've made songs with, and the songs he liked by those artists --- */}
         <div className="flex min-w-0 flex-col gap-14">
           <section>
-            <SectionLabel>Similar artists according to Fantano</SectionLabel>
-            <SimilarArtistsGrid key={artist.id} artists={similarArtists} artistName={artist.name} />
+            <SectionLabel>Artists connected to {artist.name}</SectionLabel>
+            <p className="-mt-3 mb-5 text-sm text-muted">From song credits in Fantano’s Weekly Track Roundups and track reviews.</p>
+            <SimilarArtistsGrid key={artist.id} artists={similarArtists} />
           </section>
 
           <TrackList tracks={recommendedTracks} pageArtist={artist} />
-
-          {!isReviewed && <MentionList mentions={mentions} artistName={artist.name} />}
         </div>
       </main>
     </div>

@@ -1,11 +1,14 @@
 /**
- * the "N Tracks Fantano recommends" list. the songs are already picked and ordered by
- * pickRecommendedTracks(); this only draws them. each row shows:
+ * the "N songs Fantano liked by these artists" list: songs by the connected artists that are
+ * on one of his lists. the songs are already picked and ordered by pickRecommendedTracks();
+ * this only draws them. each row shows:
  *   - a gray number, the cover, the title, and the artist (a link to their page)
- *   - the AI summary behind a thin line (never in quotation marks)
- *   - why it's recommended: his real quote + ▶ Watch, or "Fav track in his [Album] review"
- *     when he never talked about it out loud
- *   - why the artist is here, in gray: "Fantano linked A → B · Sounds like ▶ @ 3:12"
+ *   - which list it's on: "Fav track in his Mudboy review ▶ Watch ↗"
+ *   - why that artist is on this page, in gray:
+ *     "Why Sheck Wes: has a song with Travis Scott, credited in {roundup} ↗"
+ *
+ * those two lines come from two different videos: the song line is about the connected
+ * artist's own review, the gray line is the credit that connects them to this page's artist.
  *
  * usage:
  *   <TrackList tracks={recommended} pageArtist={artist} />
@@ -16,9 +19,8 @@ import Link from "next/link";
 import ArtistPhoto from "@/components/ArtistPhoto";
 import SectionLabel from "@/components/SectionLabel";
 import WatchLink from "@/components/WatchLink";
-import { LABEL_TEXT } from "@/lib/labels";
 import type { Artist, RecommendedTrack } from "@/lib/types";
-import { formatTime, watchUrl } from "@/lib/youtube";
+import { watchUrl } from "@/lib/youtube";
 
 const COVER_PX = 64;
 
@@ -28,16 +30,14 @@ type Props = {
 };
 
 export default function TrackList({ tracks, pageArtist }: Props) {
-  const heading = `${tracks.length} ${tracks.length === 1 ? "Track" : "Tracks"} Fantano recommends`;
+  const heading = `${tracks.length} ${tracks.length === 1 ? "song" : "songs"} Fantano liked by these artists`;
 
   return (
     <section>
       <SectionLabel>{heading}</SectionLabel>
 
       {tracks.length === 0 && (
-        <p className="text-sm text-muted">
-          No recommended songs yet. They show up once he’s praised a song by one of the artists above.
-        </p>
+        <p className="text-sm text-muted">None of these artists have a song on his fav or best lists yet.</p>
       )}
 
       <ol>
@@ -54,12 +54,8 @@ export default function TrackList({ tracks, pageArtist }: Props) {
                 </Link>
               </div>
 
-              {track.summary && (
-                <p className="mt-2 border-l-2 border-line pl-4 text-[15px] leading-relaxed text-body">{track.summary}</p>
-              )}
-
               <div className="mt-3">
-                <WhyRecommended track={track} />
+                <WhichList track={track} />
               </div>
 
               <p className="mt-2 truncate text-xs text-muted">
@@ -73,19 +69,14 @@ export default function TrackList({ tracks, pageArtist }: Props) {
   );
 }
 
-// --- the two "why" lines ---
+// --- the two lines under each song ---
 
-/** his quote + ▶ Watch, or, when he never discussed it aloud, where he listed it. */
-function WhyRecommended({ track }: { track: RecommendedTrack }) {
-  if (track.quote) {
-    return (
-      <>
-        <p className="text-sm leading-relaxed text-ink">“{track.quote}”</p>
-        <WatchLink videoId={track.video_id} startSeconds={track.start_s} videoTitle={track.video_title} />
-      </>
-    );
-  }
-
+/**
+ * which of his lists the song is on, and the video it's from:
+ *   fav_track    "Fav track in his Mudboy review ▶ Watch ↗"
+ *   best_track   "Best track in his Weekly Track Roundup ▶ Watch ↗"
+ */
+function WhichList({ track }: { track: RecommendedTrack }) {
   let where = "Liked in his track review";
   if (track.source === "fav_track") {
     where = track.review_release_title ? `Fav track in his ${track.review_release_title} review` : "Fav track in his review";
@@ -101,45 +92,21 @@ function WhyRecommended({ track }: { track: RecommendedTrack }) {
 }
 
 /**
- * "Fantano linked Phoebe Bridgers → Lucy Dacus · Collaborator ▶ @ 2:08". the arrow points the
- * way he said it: from the artist being discussed to the one he brought up.
- *
- * a link with no timestamp is a written "ft." credit from a track list, not something he said,
- * so it reads "Joy Crookes ft. Denzel Curry · Collaborator · credited in {video} ↗" instead.
+ * why this song's artist is on the page at all: the newest video that credits them together.
+ *   "Why Sheck Wes: has a song with Travis Scott, credited in “Sheck Wes, Lana Del Rey… | Weekly Track Roundup” ↗"
  */
 function WhyConnected({ track, pageArtist }: { track: RecommendedTrack; pageArtist: Artist }) {
-  const similar = track.artist;
-  const saidOnPageArtist = similar.link_from_id === pageArtist.id;
-  const fromName = saidOnPageArtist ? pageArtist.name : similar.name;
-  const toName = saidOnPageArtist ? similar.name : pageArtist.name;
-
-  if (similar.link_start_s === null) {
-    return (
-      <>
-        {fromName} ft. {toName} · {LABEL_TEXT[similar.label]} ·{" "}
-        <a
-          href={watchUrl(similar.link_video_id, null)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-ink hover:underline"
-        >
-          credited in “{similar.link_video_title}” ↗
-        </a>
-      </>
-    );
-  }
-
+  const connected = track.artist;
   return (
     <>
-      Fantano linked {fromName} → {toName} · {LABEL_TEXT[similar.label]}
-      {" "}
+      Why {connected.name}: has a song with {pageArtist.name},{" "}
       <a
-        href={watchUrl(similar.link_video_id, similar.link_start_s)}
+        href={watchUrl(connected.link_video_id, null)}
         target="_blank"
         rel="noopener noreferrer"
         className="hover:text-ink hover:underline"
       >
-        ▶ @ {formatTime(similar.link_start_s)}
+        credited in “{connected.link_video_title}” ↗
       </a>
     </>
   );

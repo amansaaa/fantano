@@ -2,14 +2,11 @@
 
 /**
  * the review box under the artist's photo. it shows one review at a time, newest first, and
- * the ‹ › arrows step through the rest ("2 / 6"). each review shows:
- *   - the album or song title, the kind, and his score
- *   - the AI summary (never in quotation marks, it's not his words)
- *   - one real quote in quotation marks, with ▶ Watch @ m:ss
- *
- * a review whose captions haven't been through the ai yet has no summary or quote, so it shows
- * his fav tracks from the description and "▶ Watch the review" instead. once the captions
- * arrive, the pipeline upgrades the review and the summary + quote replace them automatically.
+ * the ‹ › arrows step through the rest ("2 / 6"). each review shows what's written in the
+ * video's title and description:
+ *   - the album or song title, the kind, and his score ("7/10")
+ *   - his fav tracks ("FAV TRACKS: HYAENA, THANK GOD, ...")
+ *   - ▶ Watch the review
  *
  * usage:
  *   <ReviewCarousel reviews={reviews} />   // reviews from getReviews(), newest first
@@ -43,29 +40,16 @@ export default function ReviewCarousel({ reviews }: { reviews: Review[] }) {
         </div>
         <p className="mt-0.5 text-xs text-muted">{review.kind ? KIND_TEXT[review.kind] : "Track"} review</p>
 
-        {review.summary && <p className="mt-4 text-[15px] leading-relaxed text-body">{review.summary}</p>}
-
-        {!review.summary && review.fav_tracks.length > 0 && (
+        {review.fav_tracks.length > 0 && (
           <p className="mt-4 text-[15px] leading-relaxed text-body">
             <span className="text-muted">Fav tracks: </span>
             {review.fav_tracks.join(", ")}
           </p>
         )}
 
-        {review.quote && (
-          <figure className="mt-4 border-l-2 border-line pl-4">
-            <blockquote className="text-[15px] leading-relaxed text-ink">“{review.quote}”</blockquote>
-            <figcaption className="mt-2">
-              <WatchLink videoId={review.video_id} startSeconds={review.quote_start_s} />
-            </figcaption>
-          </figure>
-        )}
-
-        {!review.quote && (
-          <div className="mt-4">
-            <WatchLink videoId={review.video_id} startSeconds={null} label="Watch the review" />
-          </div>
-        )}
+        <div className="mt-4">
+          <WatchLink videoId={review.video_id} startSeconds={null} label="Watch the review" />
+        </div>
       </div>
 
       {hasSeveral && (
