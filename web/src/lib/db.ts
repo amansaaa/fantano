@@ -4,6 +4,11 @@
  * it reads the same MYSQL_* settings as the pipeline, from web/.env.local (a symlink to the repo's
  * .env), so nothing about the database is hardcoded anywhere else. the web app only ever reads.
  *
+ * two ways to reach MySQL:
+ *   on the mac     MYSQL_HOST + MYSQL_PORT         -> the docker container at 127.0.0.1:3306
+ *   on cloud run   MYSQL_SOCKET_PATH               -> /cloudsql/fantano-amansa:northamerica-northeast1:fantano-db
+ * cloud run mounts that socket file when deployed with --add-cloudsql-instances (CLAUDE.md section 10)
+ *
  * usage (server components and route handlers only, never in the browser):
  *   import { query } from "@/lib/db";
  *
@@ -24,11 +29,16 @@ const MAX_CONNECTIONS = 5;
 /**
  * opens the pool of connections. a pool keeps connections open between requests, so a page
  * doesn't pay for a new MySQL login every time it loads.
+ *
+ * with MYSQL_SOCKET_PATH set (cloud run) it connects through that socket file, and host/port
+ * are ignored. without it (the mac) it connects to MYSQL_HOST:MYSQL_PORT like before.
  */
 function createPool(): Pool {
+  const socketPath = process.env.MYSQL_SOCKET_PATH;
   return mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    port: Number(process.env.MYSQL_PORT),
+    socketPath: socketPath,
+    host: socketPath ? undefined : process.env.MYSQL_HOST,
+    port: socketPath ? undefined : Number(process.env.MYSQL_PORT),
     user: process.env.MYSQL_USER,
     password: process.env.MYSQL_PASSWORD,
     database: process.env.MYSQL_DATABASE,
