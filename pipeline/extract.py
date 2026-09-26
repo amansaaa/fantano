@@ -1,4 +1,4 @@
-"""stage 3: extract. turns each captioned video into facts we can trust, and saves them for stage 4.
+"""stage 3: extract. turns each video into facts we can trust, and saves them for stage 4.
 
 for every review or roundup that has captions, this script:
   1. reads what code can read on its own: the artist and album from the title (collect.py
@@ -10,15 +10,24 @@ for every review or roundup that has captions, this script:
      line the ai cited, or it gets dropped. timestamps always come from the caption file
   4. saves the merged result to videos.extraction and logs whatever got dropped
 
+videos without captions (youtube blocks us after ~15 caption downloads) don't have to wait:
+--descriptions-only saves just step 1, with no ai. those extractions have from_transcript = false,
+and once a video's captions arrive, the normal run redoes it with the ai ("upgrades" it) and
+marks it for load.py to reload. so the site fills in from descriptions first, then gets the
+summaries, quotes, and spoken connections as captions come in.
+
 usage:
-    uv run extract.py --limit 50                     # the newest 50 reviews and roundups
+    uv run extract.py --limit 50                     # the newest 50 with captions, plus any upgrades
     uv run extract.py --video Zt2esoyoTgs            # just one video, handy for testing
     uv run extract.py --video Zt2esoyoTgs --refresh  # ignore the saved ai answer and ask again
+    uv run extract.py --descriptions-only            # every video without captions, no ai
+    uv run extract.py --video Zt2esoyoTgs --descriptions-only   # force one video to description-only
 
 reads:   videos rows (MySQL) and data/captions/{id}.json (from captions.py)
 writes:  data/raw_llm/{id}.json        the ai's answer before any checks. reused on reruns,
                                        so re-checking a video costs no Gemini quota
          videos.extraction             the verified facts. this is what load.py (stage 4) reads
+         videos.load_status            set back to 'pending' whenever a new extraction is saved
          data/logs/dropped/{id}.json   every ai item that failed a check, and why
 """
 
@@ -144,8 +153,9 @@ ROUNDUP_SCHEMA = {
 # --- picking which videos to work on ---
 
 # same idea as captions.py: grab the newest N reviews and roundups first, then keep the ones
-# that have captions and haven't been extracted yet. that way --limit 50 always means
-# "the newest 50", no matter how many times you rerun it
+# that have captions and still need the ai: never extracted, or only extracted from the
+# description so far (an upgrade). that way --limit 50 always means "the newest 50", no matter
+# how many times you rerun it. ->> reads a json field as plain text, so false becomes 'false'
 PENDING_VIDEOS_SQL = """
 SELECT id, title, type, description, subject_artist, subject_title FROM (
   SELECT * FROM videos
@@ -153,7 +163,15 @@ SELECT id, title, type, description, subject_artist, subject_title FROM (
   ORDER BY published_at DESC
   LIMIT %s
 ) AS newest
-WHERE captions_status = 'done' AND extract_status = 'pending'
+WHERE captions_status = 'done'
+  AND (extract_status = 'pending' OR extraction->>'$.from_transcript' = 'false')
+ORDER BY published_at DESC
+"""
+
+# every review and roundup that has no captions yet (or never will, like captions turned off)
+DESCRIPTION_ONLY_VIDEOS_SQL = """
+SELECT id, title, type, description, subject_artist, subject_title FROM videos
+WHERE type <> 'other' AND captions_status <> 'done' AND extract_status = 'pending'
 ORDER BY published_at DESC
 """
 
@@ -387,6 +405,13 @@ def add_timestamp(item: dict, caption_lines: list[dict]) -> dict:
 
 # --- merging everything into videos.extraction ---
 
+# what "the ai said nothing" looks like, for videos with no captions yet. passing this to the
+# build_*_extraction functions keeps every description fact and leaves the spoken parts empty
+NO_AI_ANSWER = {"liked": None, "summary": None, "pull_quote": None, "connections": [], "track_takes": []}
+
+# how often the description-only run prints progress (it goes through thousands of videos)
+PROGRESS_EVERY = 250
+
 def build_review_extraction(video: dict, ai_answer: dict, caption_lines: list[dict]) -> tuple[dict, list[dict]]:
     """merges everything we know about one album or track review into the dict that gets
     saved to videos.extraction:
@@ -402,14 +427,16 @@ def build_review_extraction(video: dict, ai_answer: dict, caption_lines: list[di
     own_artist_names = split_artist_names(video["subject_artist"])
     dropped_items = []
 
-    # the ai calls the pull quote's words "text", rename it to "quote" to match every other quote
-    pull_quote = {"quote": ai_answer["pull_quote"]["text"], "line": ai_answer["pull_quote"]["line"]}
-    problem = find_quote_problem(pull_quote["quote"], pull_quote["line"], caption_lines)
-    if problem:
-        dropped_items.append({"kind": "pull_quote", "reason": problem, "item": pull_quote})
-        verified_pull_quote = None
-    else:
-        verified_pull_quote = add_timestamp(pull_quote, caption_lines)
+    # no pull quote at all happens for description-only videos (NO_AI_ANSWER)
+    verified_pull_quote = None
+    if ai_answer["pull_quote"] is not None:
+        # the ai calls the pull quote's words "text", rename it to "quote" to match every other quote
+        pull_quote = {"quote": ai_answer["pull_quote"]["text"], "line": ai_answer["pull_quote"]["line"]}
+        problem = find_quote_problem(pull_quote["quote"], pull_quote["line"], caption_lines)
+        if problem:
+            dropped_items.append({"kind": "pull_quote", "reason": problem, "item": pull_quote})
+        else:
+            verified_pull_quote = add_timestamp(pull_quote, caption_lines)
 
     verified_connections = []
     for connection in ai_answer["connections"]:
@@ -506,6 +533,24 @@ def build_roundup_extraction(video: dict, ai_answer: dict, caption_lines: list[d
     return extraction, dropped_items
 
 
+def build_description_only_extraction(video: dict) -> dict:
+    """the extraction for a video with no captions yet: everything code can read from the
+    title and description, and nothing spoken. from_transcript = False marks it, so the normal
+    run upgrades it once captions arrive.
+
+    a review gets its score and fav tracks with summary/pull_quote = None and no connections:
+        {"kind": "album", "artist": "SZA", "title": "SOS", "score_text": "7/10",
+         "fav_tracks": ["KILL BILL", ...], "summary": None, "connections": [], ..., "from_transcript": False}
+    a roundup gets every track with take = None, and the "ft." credits still come through
+    (load.py turns those into collaborator connections).
+    """
+    if video["type"] == "roundup":
+        extraction, _ = build_roundup_extraction(video, NO_AI_ANSWER, [])
+    else:
+        extraction, _ = build_review_extraction(video, NO_AI_ANSWER, [])
+    return {**extraction, "from_transcript": False}
+
+
 # --- files and the database ---
 
 def load_caption_lines(video_id: str) -> list[dict]:
@@ -554,11 +599,14 @@ def save_dropped_items(video_id: str, dropped_items: list[dict]) -> None:
 
 def save_result(conn, video_id: str, status: str, extraction: dict | None = None) -> None:
     """saves this video's extract_status ("done" or "failed") and its extraction, then commits
-    right away so progress is kept one video at a time, same as captions.py."""
+    right away so progress is kept one video at a time, same as captions.py.
+
+    load_status goes back to 'pending' too: a new extraction (like an upgrade from
+    description-only to the full ai version) means load.py has to rewrite this video's rows."""
     extraction_json = json.dumps(extraction, ensure_ascii=False) if extraction is not None else None
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE videos SET extract_status = %s, extraction = %s WHERE id = %s",
+            "UPDATE videos SET extract_status = %s, extraction = %s, load_status = 'pending' WHERE id = %s",
             (status, extraction_json, video_id),
         )
     conn.commit()
@@ -567,22 +615,33 @@ def save_result(conn, video_id: str, status: str, extraction: dict | None = None
 # --- running the stage ---
 
 def parse_args() -> argparse.Namespace:
-    """reads the command line flags: --limit N or --video ID (you need exactly one), plus
-    an optional --refresh."""
+    """reads the command line flags: --limit N or --video ID (at most one), plus --refresh or
+    --descriptions-only. --descriptions-only works alone (every video without captions) or with
+    --video (just that one)."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    which_videos = parser.add_mutually_exclusive_group(required=True)
+    which_videos = parser.add_mutually_exclusive_group()
     which_videos.add_argument("--limit", type=int, help="the newest N reviews and roundups")
     which_videos.add_argument("--video", help="one video id")
     parser.add_argument("--refresh", action="store_true", help="ask the ai again even if an answer is saved")
-    return parser.parse_args()
+    parser.add_argument("--descriptions-only", action="store_true",
+                        help="save only what the title and description say, no captions or ai")
+    args = parser.parse_args()
+
+    if args.descriptions_only and args.limit is not None:
+        parser.error("--descriptions-only takes every video without captions, so it doesn't need --limit")
+    if not args.descriptions_only and args.limit is None and args.video is None:
+        parser.error("pick --limit N, --video ID, or --descriptions-only")
+    return args
 
 
 def fetch_videos(conn, args: argparse.Namespace) -> list[dict]:
-    """the videos to work on this run: just the one for --video, or the newest pending ones
-    for --limit."""
+    """the videos to work on this run: just the one for --video, every video without captions
+    for --descriptions-only, or the newest pending ones for --limit."""
     with conn.cursor() as cur:
         if args.video:
             cur.execute(SINGLE_VIDEO_SQL, (args.video,))
+        elif args.descriptions_only:
+            cur.execute(DESCRIPTION_ONLY_VIDEOS_SQL)
         else:
             cur.execute(PENDING_VIDEOS_SQL, (args.limit,))
         return cur.fetchall()
@@ -600,6 +659,25 @@ def find_missing_input(video: dict) -> str | None:
     return None
 
 
+def extract_descriptions_only(conn, videos: list[dict]) -> None:
+    """saves the description-only extraction for each video (no captions, no ai, so it's fast).
+    a video whose title or description can't be read is marked failed, same as the ai run."""
+    failed_count = 0
+    for position, video in enumerate(videos, start=1):
+        missing = find_missing_input(video)
+        if missing:
+            print(f"[{position}/{len(videos)}] {video['id']} FAILED   {missing}: {video['title']}")
+            save_result(conn, video["id"], "failed")
+            failed_count += 1
+            continue
+
+        save_result(conn, video["id"], "done", build_description_only_extraction(video))
+        if position % PROGRESS_EVERY == 0:
+            print(f"[{position}/{len(videos)}] ...")
+
+    print(f"done: {len(videos) - failed_count} extracted from their descriptions, {failed_count} failed")
+
+
 def main() -> None:
     args = parse_args()
     RAW_AI_DIR.mkdir(parents=True, exist_ok=True)
@@ -608,6 +686,10 @@ def main() -> None:
     with connect() as conn:
         videos = fetch_videos(conn, args)
         print(f"{len(videos)} videos to extract")
+
+        if args.descriptions_only:
+            extract_descriptions_only(conn, videos)
+            return
 
         for position, video in enumerate(videos, start=1):
             progress = f"[{position}/{len(videos)}] {video['id']}"
@@ -642,7 +724,7 @@ def main() -> None:
                 take_count = len(extraction["track_takes"])
 
             save_dropped_items(video["id"], dropped_items)
-            save_result(conn, video["id"], "done", extraction)
+            save_result(conn, video["id"], "done", {**extraction, "from_transcript": True})
             print(f"{progress} ok  kept {len(extraction['connections'])} connections, "
                   f"{take_count} takes; dropped {len(dropped_items)}  {video['title']}")
 

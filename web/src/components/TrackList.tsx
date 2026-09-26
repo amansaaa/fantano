@@ -62,7 +62,7 @@ export default function TrackList({ tracks, pageArtist }: Props) {
                 <WhyRecommended track={track} />
               </div>
 
-              <p className="mt-2 text-xs text-muted">
+              <p className="mt-2 truncate text-xs text-muted">
                 <WhyConnected track={track} pageArtist={pageArtist} />
               </p>
             </div>
@@ -103,6 +103,9 @@ function WhyRecommended({ track }: { track: RecommendedTrack }) {
 /**
  * "Fantano linked Phoebe Bridgers → Lucy Dacus · Collaborator ▶ @ 2:08". the arrow points the
  * way he said it: from the artist being discussed to the one he brought up.
+ *
+ * a link with no timestamp is a written "ft." credit from a track list, not something he said,
+ * so it reads "Joy Crookes ft. Denzel Curry · Collaborator · credited in {video} ↗" instead.
  */
 function WhyConnected({ track, pageArtist }: { track: RecommendedTrack; pageArtist: Artist }) {
   const similar = track.artist;
@@ -110,22 +113,34 @@ function WhyConnected({ track, pageArtist }: { track: RecommendedTrack; pageArti
   const fromName = saidOnPageArtist ? pageArtist.name : similar.name;
   const toName = saidOnPageArtist ? similar.name : pageArtist.name;
 
+  if (similar.link_start_s === null) {
+    return (
+      <>
+        {fromName} ft. {toName} · {LABEL_TEXT[similar.label]} ·{" "}
+        <a
+          href={watchUrl(similar.link_video_id, null)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-ink hover:underline"
+        >
+          credited in “{similar.link_video_title}” ↗
+        </a>
+      </>
+    );
+  }
+
   return (
     <>
       Fantano linked {fromName} → {toName} · {LABEL_TEXT[similar.label]}
-      {similar.link_start_s !== null && (
-        <>
-          {" "}
-          <a
-            href={watchUrl(similar.link_video_id, similar.link_start_s)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-ink hover:underline"
-          >
-            ▶ @ {formatTime(similar.link_start_s)}
-          </a>
-        </>
-      )}
+      {" "}
+      <a
+        href={watchUrl(similar.link_video_id, similar.link_start_s)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="hover:text-ink hover:underline"
+      >
+        ▶ @ {formatTime(similar.link_start_s)}
+      </a>
     </>
   );
 }

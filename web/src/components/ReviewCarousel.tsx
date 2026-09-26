@@ -7,6 +7,10 @@
  *   - the AI summary (never in quotation marks, it's not his words)
  *   - one real quote in quotation marks, with ▶ Watch @ m:ss
  *
+ * a review whose captions haven't been through the ai yet has no summary or quote, so it shows
+ * his fav tracks from the description and "▶ Watch the review" instead. once the captions
+ * arrive, the pipeline upgrades the review and the summary + quote replace them automatically.
+ *
  * usage:
  *   <ReviewCarousel reviews={reviews} />   // reviews from getReviews(), newest first
  */
@@ -41,6 +45,13 @@ export default function ReviewCarousel({ reviews }: { reviews: Review[] }) {
 
         {review.summary && <p className="mt-4 text-[15px] leading-relaxed text-body">{review.summary}</p>}
 
+        {!review.summary && review.fav_tracks.length > 0 && (
+          <p className="mt-4 text-[15px] leading-relaxed text-body">
+            <span className="text-muted">Fav tracks: </span>
+            {review.fav_tracks.join(", ")}
+          </p>
+        )}
+
         {review.quote && (
           <figure className="mt-4 border-l-2 border-line pl-4">
             <blockquote className="text-[15px] leading-relaxed text-ink">“{review.quote}”</blockquote>
@@ -48,6 +59,12 @@ export default function ReviewCarousel({ reviews }: { reviews: Review[] }) {
               <WatchLink videoId={review.video_id} startSeconds={review.quote_start_s} />
             </figcaption>
           </figure>
+        )}
+
+        {!review.quote && (
+          <div className="mt-4">
+            <WatchLink videoId={review.video_id} startSeconds={null} label="Watch the review" />
+          </div>
         )}
       </div>
 

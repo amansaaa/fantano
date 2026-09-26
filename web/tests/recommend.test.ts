@@ -13,7 +13,7 @@ import type { EndorsedTrack, Label, SimilarArtist } from "../src/lib/types";
 function makeArtist(id: number, label: Label = "sounds_like"): SimilarArtist {
   return {
     id, name: `artist ${id}`, image_url: null, video_count: 1, label,
-    link_from_id: 1, link_start_s: 10, link_video_id: "abc123XYZ00",
+    link_from_id: 1, link_start_s: 10, link_video_id: "abc123XYZ00", link_video_title: "a video",
   };
 }
 
