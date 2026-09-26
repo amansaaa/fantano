@@ -154,8 +154,11 @@ It returns structured JSON:
 #### Stage 4: Match names + load (`load.py`)
 
 - Turns every artist name into an ID, since the `connections` table only holds artist IDs (`from_artist_id`, `to_artist_id`).
-- Checks each name against the artists Fantano has reviewed, and otherwise against MusicBrainz, to confirm the string is actually a real artist.
-- Spelling variants collapse into one artist (`A$AP Rocky` and `ASAP Rocky` are the same row). Names that can't be matched confidently are dropped and logged.
+- Written names (review titles, the roundup track lists) are trusted as-is. Spoken names come from auto-captions and the AI, so each one has to pass a rule:
+  1. it matches an artist Fantano has reviewed (~1,800 names), or
+  2. exactly one [MusicBrainz](https://musicbrainz.org) artist clearly has that name ("Jorge Ben" → Jorge Ben Jor). Two bands called "Repentance" is a coin flip, so that name is dropped instead of guessed.
+- Spelling variants collapse into one artist (`A$AP Rocky` and `ASAP Rocky` are the same row). On the first 33 videos, 13 of 134 spoken names were dropped: misspellings, or names shared by several artists.
+- Each video's rows are written in one transaction, and reloading a video replaces its old rows, so reruns never create duplicates.
 
 ```
 artists
@@ -171,7 +174,9 @@ connections
 
 #### Stage 5: Images (`images.py`)
 
-- Asks Deezer for artist photos and album covers, and only stores the URLs (free to use; nothing to store or host).
+- Asks Deezer for artist photos and album and song covers, and only stores the URLs (free to use; nothing to store or host).
+- A search can return anything, so code picks the result: the same artist (a duo like "Erykah Badu & The Alchemist" matches either member), and the closest title ("Materia" and not "Materia 2"). When several artists share a name, the most popular one wins.
+- First run: 233/235 artist photos, 28/28 album covers, 168/179 song covers. Anything without a match shows a gray placeholder.
 
 ### Database
 

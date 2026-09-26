@@ -1,12 +1,15 @@
 # CI: checks every push and pull request, so a broken change shows up as a red x on GitHub
 # instead of being found later while running the pipeline.
 #
-# two jobs, they run at the same time:
+# three jobs, they run at the same time:
 #   pipeline - installs the exact locked packages, runs the linter, then runs all the tests
 #   schema   - starts a real MySQL 8.4 and loads db/schema.sql into it, to prove the tables still build
+#   web      - installs the exact locked packages, then lints, type-checks, and builds the next.js app
 #
 # no API keys or secrets are used here: the tests never touch YouTube, Gemini, or a real database.
-# to run the same checks on your mac: cd pipeline && uv run ruff check . && uv run pytest
+# to run the same checks on your mac:
+#   cd pipeline && uv run ruff check . && uv run pytest
+#   cd web && npm run lint && npx tsc --noEmit && npm run build
 
 name: CI
 
@@ -80,3 +83,33 @@ jobs:
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'fantano'")
           echo "tables: $table_count"
           test "$table_count" -eq 7
+
+  # --- lint + type check + build for the web app ---
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # npm ci installs exactly what package-lock.json says, and fails if it's out of date
+      - name: Install packages
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # no database here on purpose: every page that reads MySQL is rendered per request,
+      # so the build never runs a query. if one ever did, this step would fail
+      - name: Build
+        run: npm run build

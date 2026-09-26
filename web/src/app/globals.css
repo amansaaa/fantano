@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/* the site's colors and font, picked from the reference screenshots in data/ui-reference/.
+   each one becomes a tailwind class: --color-ink -> text-ink, bg-ink, border-ink */
+@theme {
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+
+  /* headings and names */
+  --color-ink: #111114;
+  /* body text, like summaries */
+  --color-body: #3a3d45;
+  /* small caps section labels ("SIMILAR ARTISTS ACCORDING TO FANTANO") */
+  --color-label: #a3aecb;
+  /* secondary text: labels under photos, the artist next to a track title */
+  --color-muted: #9aa1b2;
+  /* thin dividers and empty image squares */
+  --color-line: #e8eaf0;
+  --color-placeholder: #f1f2f6;
+  /* the "▶ Watch @ 3:47" links */
+  --color-watch: #7b2233;
+
+  /* the home page covers bob up and down a little */
+  --animate-float: float 7s ease-in-out infinite alternate;
+  @keyframes float {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-10px);
+    }
+  }
+}
+
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+}
