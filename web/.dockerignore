@@ -1,0 +1,6 @@
+# what docker build never copies into the image
+node_modules
+.next
+# .env.local is a symlink to the repo's .env (local secrets). cloud run gets its own settings
+.env*
+npm-debug.log*
