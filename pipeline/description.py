@@ -34,6 +34,10 @@ ROUNDUP_SECTION_HEADERS = [
     ("worst", re.compile(r"^!+\s*WORST TRACKS? THIS WEEK", re.IGNORECASE)),
 ]
 
+# what he writes when there's nothing to list: "FAV TRACKS: N/A" means no fav tracks, not a song
+# called "N/A". measured on every review: N/A 53 times, "..." 14, NONE 9
+NO_TRACKS_PLACEHOLDERS = {"n/a", "na", "none", "..."}
+
 # " ft. Denzel Curry" or " feat. Denzel Curry" at the end of a track title
 FEATURED_PATTERN = re.compile(r"\s+(?:ft|feat)\.\s+(.+)$", re.IGNORECASE)
 
@@ -70,14 +74,20 @@ def parse_score(description: str) -> str | None:
 def parse_track_list(description: str, prefix: str) -> list[str]:
     """the comma-separated tracks after "FAV TRACKS:" (prefix "FAV") or "LEAST FAV TRACK:"
     (prefix "LEAST FAV"), e.g. "FAV TRACKS: DIFFERENT RELIGION, REDLIGHTS" ->
-    ["DIFFERENT RELIGION", "REDLIGHTS"]. returns [] if the line isn't there."""
+    ["DIFFERENT RELIGION", "REDLIGHTS"]. returns [] if the line isn't there, or if it just
+    says "N/A" or "NONE"."""
     # ^ pins the prefix to the start of the line, so "FAV" doesn't also match "LEAST FAV TRACK:"
     pattern = rf"^{prefix} TRACKS?:\s*(.+)$"
     for line in clean_lines(description):
         match = re.match(pattern, line, re.IGNORECASE)
         if match:
-            tracks = [track.strip() for track in match[1].split(",")]
-            return [track for track in tracks if track]
+            tracks = []
+            for track in match[1].split(","):
+                track = track.strip()
+                if not track or track.lower() in NO_TRACKS_PLACEHOLDERS:
+                    continue
+                tracks.append(track)
+            return tracks
     return []
 
 

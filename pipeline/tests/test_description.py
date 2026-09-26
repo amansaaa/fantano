@@ -69,6 +69,12 @@ def test_missing_track_list_is_empty():
     assert parse_track_list("5/10", "FAV") == []
 
 
+@pytest.mark.parametrize("placeholder", ["N/A", "n/a", "NONE", "..."])
+def test_placeholder_instead_of_tracks_is_empty(placeholder):
+    # "FAV TRACKS: N/A" once became a recommended song called "N/A"
+    assert parse_track_list(f"FAV TRACKS: {placeholder}", "FAV") == []
+
+
 @pytest.mark.parametrize("line, expected_track", [
     ("Godflesh - Master and Slave",
      {"artist": "Godflesh", "title": "Master and Slave", "featured": []}),

@@ -489,6 +489,19 @@ def load_roundup(cur, video_id: str, extraction: dict, matcher: NameMatcher) -> 
     return summary, dropped_names
 
 
+def delete_unused_tracks(conn) -> int:
+    """removes songs nothing points at anymore. that happens when a reload drops a fav track,
+    like the "N/A" fav tracks that description.py now skips. returns how many were removed."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM tracks WHERE id NOT IN (SELECT track_id FROM endorsements) "
+            "AND id NOT IN (SELECT track_id FROM reviews WHERE track_id IS NOT NULL)"
+        )
+        removed_count = cur.rowcount
+    conn.commit()
+    return removed_count
+
+
 # --- files and statuses ---
 
 def save_dropped_names(video_id: str, dropped_names: list[dict]) -> None:
@@ -575,6 +588,10 @@ def main() -> None:
             save_dropped_names(video["id"], dropped_names)
             save_status(conn, video["id"], "done")
             print(f"{progress} ok  {summary}  {video['title']}")
+
+        removed_count = delete_unused_tracks(conn)
+        if removed_count:
+            print(f"removed {removed_count} songs nothing points at anymore")
 
 
 if __name__ == "__main__":
