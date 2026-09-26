@@ -83,7 +83,11 @@ export async function getReviews(artistId: number): Promise<Review[]> {
 
 // the whole grid rule in one query (CLAUDE.md §6):
 //   links        every connection where this artist is the "from" OR the "to" side,
-//                with other_id = whoever is on the other side
+//                with other_id = whoever is on the other side. it's two halves glued with
+//                UNION ALL instead of "WHERE ? IN (from_artist_id, to_artist_id)", because
+//                MySQL can't use an index for that IN and scans the whole table; each half
+//                uses its own index (from_artist_id, to_artist_id). a connection is never
+//                from and to the same artist (a CHECK in schema.sql), so nothing is counted twice
 //   pairs        per other artist: how many different videos link them, and the newest one
 //   label_ranks  per other artist: their labels, most frequent first. ties go to the newer
 //                video, then to whatever he said first
@@ -93,12 +97,19 @@ export async function getReviews(artistId: number): Promise<Review[]> {
 // ranked by number of videos, then the newest video
 const SIMILAR_ARTISTS_SQL = `
 WITH links AS (
-  SELECT IF(connections.from_artist_id = ?, connections.to_artist_id, connections.from_artist_id) AS other_id,
+  SELECT connections.to_artist_id AS other_id,
          connections.from_artist_id, connections.label, connections.start_s,
          connections.video_id, videos.title AS video_title, videos.published_at
   FROM connections
   JOIN videos ON videos.id = connections.video_id
-  WHERE ? IN (connections.from_artist_id, connections.to_artist_id)
+  WHERE connections.from_artist_id = ?
+  UNION ALL
+  SELECT connections.from_artist_id AS other_id,
+         connections.from_artist_id, connections.label, connections.start_s,
+         connections.video_id, videos.title AS video_title, videos.published_at
+  FROM connections
+  JOIN videos ON videos.id = connections.video_id
+  WHERE connections.to_artist_id = ?
 ),
 pairs AS (
   SELECT other_id, COUNT(DISTINCT video_id) AS video_count, MAX(published_at) AS newest_at
@@ -171,18 +182,28 @@ export async function getEndorsedTracks(artistIds: number[]): Promise<EndorsedTr
 
 // --- artists he only mentioned ---
 
-// only spoken links (they have a timestamp). written ft. credits have nothing to play
+// only spoken links (they have a timestamp). written ft. credits have nothing to play.
+// same two-halves UNION ALL as the grid, so both halves use an index
 const MENTIONS_SQL = `
-SELECT other_artists.id AS other_id, other_artists.name AS other_name,
-       connections.from_artist_id, connections.label, connections.quote, connections.start_s,
-       connections.video_id, videos.title AS video_title
-FROM connections
-JOIN videos ON videos.id = connections.video_id
-JOIN artists AS other_artists
-  ON other_artists.id = IF(connections.from_artist_id = ?, connections.to_artist_id, connections.from_artist_id)
-WHERE ? IN (connections.from_artist_id, connections.to_artist_id)
-  AND connections.start_s IS NOT NULL
-ORDER BY videos.published_at DESC, connections.start_s
+SELECT other_id, other_name, from_artist_id, label, quote, start_s, video_id, video_title
+FROM (
+  SELECT other_artists.id AS other_id, other_artists.name AS other_name,
+         connections.from_artist_id, connections.label, connections.quote, connections.start_s,
+         connections.video_id, videos.title AS video_title, videos.published_at
+  FROM connections
+  JOIN videos ON videos.id = connections.video_id
+  JOIN artists AS other_artists ON other_artists.id = connections.to_artist_id
+  WHERE connections.from_artist_id = ? AND connections.start_s IS NOT NULL
+  UNION ALL
+  SELECT other_artists.id AS other_id, other_artists.name AS other_name,
+         connections.from_artist_id, connections.label, connections.quote, connections.start_s,
+         connections.video_id, videos.title AS video_title, videos.published_at
+  FROM connections
+  JOIN videos ON videos.id = connections.video_id
+  JOIN artists AS other_artists ON other_artists.id = connections.from_artist_id
+  WHERE connections.to_artist_id = ? AND connections.start_s IS NOT NULL
+) AS mentions
+ORDER BY published_at DESC, start_s
 `;
 
 /** "Every time Fantano mentioned X": each spoken link to this artist, newest first. */
