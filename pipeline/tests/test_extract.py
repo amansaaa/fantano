@@ -7,6 +7,8 @@ together, citing the wrong line, garbling "Björk", and linking an artist to the
 """
 
 from extract import (
+    NO_AI_ANSWER,
+    build_description_only_extraction,
     build_review_ai_input,
     build_review_extraction,
     find_connection_problem,
@@ -218,3 +220,63 @@ def test_build_review_extraction_keeps_good_items_and_drops_bad_ones():
     assert extraction["pull_quote"]["start_s"] == 12
     # the invented connection is dropped, with a reason
     assert [(item["kind"], item["item"]["artist"]) for item in dropped_items] == [("connection", "Frank Ocean")]
+
+
+# --- videos with no captions yet (description-only) ---
+
+REVIEW_VIDEO = {
+    "type": "album_review",
+    "title": "Erykah Badu & The Alchemist - Before the World Blows ALBUM REVIEW",
+    "description": "FAV TRACKS: REDLIGHTS, NEON SIGNS\nLEAST FAV TRACK: ORBIT\n6/10",
+    "subject_artist": "Erykah Badu & The Alchemist",
+    "subject_title": "Before the World Blows",
+}
+
+ROUNDUP_VIDEO = {
+    "type": "roundup",
+    "title": "Weekly Track Roundup: 9/21",
+    "description": (
+        "!!!BEST TRACKS THIS WEEK!!!\n\nJoy Crookes - Painkiller ft. Denzel Curry\n\n"
+        "...meh...\n\nTroye Sivan - Party\n\n"
+        "!!!WORST TRACKS THIS WEEK!!!\n\nSomeone - Bad Song"
+    ),
+    "subject_artist": None,
+    "subject_title": None,
+}
+
+
+def test_description_only_review_keeps_every_written_fact_and_nothing_spoken():
+    extraction = build_description_only_extraction(REVIEW_VIDEO)
+
+    # everything code can read on its own is there
+    assert extraction["kind"] == "album"
+    assert extraction["artist"] == "Erykah Badu & The Alchemist"
+    assert extraction["score_text"] == "6/10"
+    assert extraction["fav_tracks"] == ["REDLIGHTS", "NEON SIGNS"]
+    # nothing that needs his speech
+    assert extraction["summary"] is None
+    assert extraction["pull_quote"] is None
+    assert extraction["liked"] is None
+    assert extraction["connections"] == []
+    assert extraction["track_takes"] == []
+    # marked, so the normal run upgrades it once captions arrive
+    assert extraction["from_transcript"] is False
+
+
+def test_description_only_roundup_keeps_tracks_and_ft_credits_without_takes():
+    extraction = build_description_only_extraction(ROUNDUP_VIDEO)
+
+    tracks = [(track["artist"], track["title"], track["verdict"]) for track in extraction["tracks"]]
+    assert tracks == [("Joy Crookes", "Painkiller", "best"), ("Troye Sivan", "Party", "meh"),
+                      ("Someone", "Bad Song", "worst")]
+    # the ft. credit survives: load.py turns it into a collaborator connection
+    assert extraction["tracks"][0]["featured"] == ["Denzel Curry"]
+    assert all(track["take"] is None for track in extraction["tracks"])
+    assert extraction["connections"] == []
+    assert extraction["from_transcript"] is False
+
+
+def test_review_without_a_pull_quote_does_not_crash():
+    extraction, dropped_items = build_review_extraction(REVIEW_VIDEO, NO_AI_ANSWER, [])
+    assert extraction["pull_quote"] is None
+    assert dropped_items == []

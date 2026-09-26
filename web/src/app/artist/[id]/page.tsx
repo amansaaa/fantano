@@ -95,7 +95,7 @@ export default async function ArtistPage({ params }: PageProps<"/artist/[id]">) 
             <ReviewCarousel key={artist.id} reviews={reviews} />
           ) : (
             <p className="text-sm leading-relaxed text-muted">
-              Fantano hasn’t reviewed {artist.name} yet. This page is built from the times he brought them up.
+              Fantano hasn’t reviewed {artist.name} yet. This page is built from the videos where he mentions or credits them.
             </p>
           )}
         </aside>

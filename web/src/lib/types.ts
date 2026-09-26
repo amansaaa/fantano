@@ -34,7 +34,11 @@ export type Artist = {
   is_reviewed: number;
 };
 
-/** one review in the review box. an album review has a kind, a track review has kind = null. */
+/**
+ * one review in the review box. an album review has a kind, a track review has kind = null.
+ * summary and quote are null until the video's captions have been through the ai; until then
+ * the box shows fav_tracks (from the description) instead.
+ */
 export type Review = {
   video_id: string;
   video_title: string;
@@ -44,6 +48,7 @@ export type Review = {
   summary: string | null;
   quote: string | null;
   quote_start_s: number | null;
+  fav_tracks: string[];
 };
 
 /**
@@ -57,8 +62,10 @@ export type SimilarArtist = {
   video_count: number;
   label: Label;
   link_from_id: number;
+  // null for a written "ft." credit: he never said it, it's in a track list
   link_start_s: number | null;
   link_video_id: string;
+  link_video_title: string;
 };
 
 /** one song he liked (an endorsement), with where he said so. */

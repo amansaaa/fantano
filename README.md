@@ -34,7 +34,8 @@ docker compose up -d
 cd pipeline
 uv run collect.py
 uv run captions.py --limit 50
-uv run extract.py
+uv run extract.py --descriptions-only   # every video, from its description (no AI)
+uv run extract.py --limit 50            # AI for the videos that have captions
 uv run load.py
 uv run images.py
 
@@ -92,6 +93,7 @@ collect → captions → extract + verify → match names + load → images
 
 - Downloads YouTube's auto-generated subtitles for the newest N reviews and roundups, and saves them to a file with numbered lines.
 - Waits 10 seconds between videos. If YouTube blocks requests, it stops and leaves the rest `pending`; rerunning resumes where it left off.
+- In practice YouTube blocks after ~15 videos, for more than a day, so a scheduled job collects a few more every 6 hours and nothing else waits on captions (see [Design changes](#design-changes)).
 
 ```json
 // data/captions/abc123XYZ00.json
@@ -142,6 +144,8 @@ It returns structured JSON:
 - `track_takes` give the recommended songs (fav tracks from the description) his quote and a timestamp.
 - `llm.py` is the only file that talks to the AI: `generate_json(prompt, text, schema)` sends an HTTP request to Gemini and returns a dict. The API enforces the JSON schema. Rate limits are retried with exponential backoff (10s, 20s, 40s); if Gemini stays unavailable, the run stops and resumes later. Switching AI providers means rewriting only this file.
 
+**Videos without captions yet** skip the AI entirely (`extract.py --descriptions-only`): they're saved with just the description facts and a `from_transcript: false` flag. When their captions arrive, the normal run sends them to the AI and they're upgraded in place.
+
 **3. Plain code checks everything the AI said:**
 - The AI cites line numbers instead of timestamps, because LLMs are bad at precise numbers (they predict text; they don't do arithmetic like a calculator). The code looks up the real timestamp from the line.
 - Does line 44 exist?
@@ -191,6 +195,7 @@ Phoebe Bridgers                                 grid card
 ```
 
 - The "songs he'd recommend" rule is a small pure function (round-robin across the grid, skipping Contrast cards, up to 12) with its own tests.
+- A review that hasn't been through the AI yet shows his fav tracks from the description instead of a summary; the upgrade swaps them automatically.
 
 ### Database
 
@@ -203,6 +208,36 @@ Phoebe Bridgers                                 grid card
 - **Graph database:** connections are a graph, but every query only goes one hop (just Frank Ocean's neighbours) and the dataset is small. SQL handles one hop easily.
 
 Our data is heavily cross-referenced (relationships between artists, labels, videos and timestamps of each mention), which is exactly what relational databases are built for.
+
+## Design changes
+
+Decisions that changed during the build, and why.
+
+### Description first, captions later (Sep 2026)
+
+**The constraint.** The plan was captions → AI → database for every video. In practice, YouTube blocked my IP after ~15 caption downloads, for more than a day. A week in, 47 of 3,994 videos had captions and the site had 28 artists.
+
+**What I tried:**
+- `youtube-transcript-api` → "IP blocked"
+- `yt-dlp` → `429 Too Many Requests`
+- `yt-dlp` pretending to be Chrome → still `429`
+
+The block is on YouTube's caption server for my IP, not on one tool. Running it from a Google Cloud VM (free credits) wouldn't help, because YouTube blocks cloud IPs even harder than home ones.
+
+**The reframe.** The pipeline already split the work: code reads what's *written* (scores, fav tracks, best tracks, "ft." credits in the description) and the AI reads what's *spoken* (summaries, quotes, "sounds like" comparisons). Only the spoken half needs captions. So:
+1. Every video is loaded from its description now (no AI; 3,928 videos in 8 seconds).
+2. Each extraction is flagged `from_transcript: true/false`.
+3. A scheduled job keeps collecting captions. When a video's captions arrive, it's sent to the AI and **upgraded in place**: its rows are rewritten in one transaction, so nothing is duplicated.
+
+| | Before | After (same day) |
+|---|---|---|
+| Searchable artists | 28 | 1,790 |
+| Connections | 160 | 2,132 (1,938 from "ft." credits) |
+| Songs he liked | 181 | 20,564 |
+
+**The trade-off.** Written connections are only "Collaborator". The comparisons that make the site interesting ("sounds like", "influenced by") still need captions, so they fill in over time. The goal stayed the same; the order of work changed.
+
+**What I'd say in an interview.** When an upstream source is rate-limited, separate what depends on it from what doesn't, ship the independent part, and build an upgrade path instead of blocking everything on the slowest input.
 
 ## Tech stack
 

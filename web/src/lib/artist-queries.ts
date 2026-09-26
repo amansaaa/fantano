@@ -42,9 +42,41 @@ WHERE reviews.artist_id = ?
 ORDER BY videos.published_at DESC
 `;
 
-/** this artist's reviews, newest first. empty for artists he only mentioned. */
+// the fav tracks listed in each review's description, in the order he wrote them
+// (load.py inserts them in that order, so endorsements.id keeps it)
+const FAV_TRACKS_SQL = `
+SELECT endorsements.video_id, tracks.title
+FROM endorsements
+JOIN tracks ON tracks.id = endorsements.track_id
+WHERE endorsements.video_id IN (?) AND endorsements.source = 'fav_track'
+ORDER BY endorsements.id
+`;
+
+/**
+ * this artist's reviews, newest first, each with its fav tracks. empty for artists he only
+ * mentioned.
+ *
+ *   await getReviews(239)
+ *   // -> [{ title: "petal", score_text: "5/10", summary: "He finds...", fav_tracks: ["...", ...], ... }]
+ */
 export async function getReviews(artistId: number): Promise<Review[]> {
-  return query<Review>(REVIEWS_SQL, [artistId]);
+  const reviews = await query<Omit<Review, "fav_tracks">>(REVIEWS_SQL, [artistId]);
+  if (reviews.length === 0) {
+    return [];
+  }
+
+  const favRows = await query<{ video_id: string; title: string }>(
+    FAV_TRACKS_SQL,
+    [reviews.map((review) => review.video_id)],
+  );
+  const favTracksByVideo = new Map<string, string[]>();
+  for (const row of favRows) {
+    const favTracks = favTracksByVideo.get(row.video_id) ?? [];
+    favTracks.push(row.title);
+    favTracksByVideo.set(row.video_id, favTracks);
+  }
+
+  return reviews.map((review) => ({ ...review, fav_tracks: favTracksByVideo.get(review.video_id) ?? [] }));
 }
 
 // --- the similar artists grid ---
@@ -56,13 +88,14 @@ export async function getReviews(artistId: number): Promise<Review[]> {
 //   label_ranks  per other artist: their labels, most frequent first. ties go to the newer
 //                video, then to whatever he said first
 //   latest_links per other artist and label: the newest link, for the gray
-//                "Fantano linked A → B · Sounds like ▶ @ 3:12" line
+//                "Fantano linked A → B · Sounds like ▶ @ 3:12" line (or, for a written
+//                "ft." credit with no timestamp, "A ft. B · Collaborator · credited in {video}")
 // ranked by number of videos, then the newest video
 const SIMILAR_ARTISTS_SQL = `
 WITH links AS (
   SELECT IF(connections.from_artist_id = ?, connections.to_artist_id, connections.from_artist_id) AS other_id,
          connections.from_artist_id, connections.label, connections.start_s,
-         connections.video_id, videos.published_at
+         connections.video_id, videos.title AS video_title, videos.published_at
   FROM connections
   JOIN videos ON videos.id = connections.video_id
   WHERE ? IN (connections.from_artist_id, connections.to_artist_id)
@@ -82,7 +115,7 @@ label_ranks AS (
   GROUP BY other_id, label
 ),
 latest_links AS (
-  SELECT other_id, label, from_artist_id, start_s, video_id,
+  SELECT other_id, label, from_artist_id, start_s, video_id, video_title,
          ROW_NUMBER() OVER (
            PARTITION BY other_id, label
            ORDER BY published_at DESC, start_s IS NULL, start_s
@@ -91,7 +124,7 @@ latest_links AS (
 )
 SELECT artists.id, artists.name, artists.image_url, pairs.video_count, label_ranks.label,
        latest_links.from_artist_id AS link_from_id, latest_links.start_s AS link_start_s,
-       latest_links.video_id AS link_video_id
+       latest_links.video_id AS link_video_id, latest_links.video_title AS link_video_title
 FROM pairs
 JOIN artists ON artists.id = pairs.other_id
 JOIN label_ranks ON label_ranks.other_id = pairs.other_id AND label_ranks.label_rank = 1
