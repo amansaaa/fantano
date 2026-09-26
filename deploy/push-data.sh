@@ -64,9 +64,12 @@ done
 
 echo "loading the dump into cloud sql (a minute or so)"
 # the mac has no mysql client, so this borrows the one inside the local container.
-# host.docker.internal is how a container reaches the mac, where the tunnel is listening
+# host.docker.internal is how a container reaches the mac, where the tunnel is listening.
+# --get-server-public-key: MySQL 8.4 won't take a password over plain tcp (the hop to the
+# tunnel on the mac) unless the client can fetch the server's key to encrypt it first.
+# without it: "ERROR 2061 ... Authentication requires secure connection"
 docker compose exec -T -e MYSQL_PWD="$cloud_root_password" mysql \
-  mysql -h host.docker.internal -P "$PROXY_PORT" -uroot fantano \
+  mysql -h host.docker.internal -P "$PROXY_PORT" --get-server-public-key -uroot fantano \
   < "$DUMP_FILE"
 
 echo "done: cloud sql now matches the local database"
