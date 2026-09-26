@@ -4,8 +4,10 @@ the cases come from real deezer searches: an empty duplicate "Miley Cyrus", "Mat
 "Materia 2", duo credits filed under one member, and self-titled albums.
 """
 
+import httpx
 import pytest
 
+import images
 from images import is_real_image, is_same_artist, pick_artist_photo, pick_cover, title_score, to_searchable_title
 
 REAL_PHOTO = "https://cdn-images.dzcdn.net/images/artist/3be756289836/1000x1000-000000-80-0-0.jpg"
@@ -73,3 +75,46 @@ def test_track_result_uses_its_albums_cover():
 def test_self_titled_album_is_searched_by_the_artists_name():
     assert to_searchable_title("Weezer", "Self-Titled (Gold)") == "Weezer (Gold)"
     assert to_searchable_title("Chat Pile", "Who Loves the Sun") == "Who Loves the Sun"
+
+
+# --- network hiccups while asking deezer ---
+
+class FakeDeezerResponse:
+    """just enough of an httpx response for search_deezer."""
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"data": [{"name": "Mastodon"}]}
+
+
+@pytest.fixture
+def offline_deezer(monkeypatch, tmp_path):
+    """no real requests, no waiting, and the cache goes to a throwaway folder."""
+    monkeypatch.setattr(images, "DEEZER_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(images.time, "sleep", lambda seconds: None)
+
+
+def test_a_timeout_is_retried_until_it_works(offline_deezer, monkeypatch):
+    # the first request times out (what ended a real run), the second one works
+    answers = [httpx.ConnectTimeout("handshake timed out"), FakeDeezerResponse()]
+
+    def fake_get(url, params, timeout):
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(images.httpx, "get", fake_get)
+    assert images.search_deezer("artist", "Mastodon") == [{"name": "Mastodon"}]
+    assert answers == []
+
+
+def test_a_network_that_stays_down_still_stops_the_run(offline_deezer, monkeypatch):
+    def always_times_out(url, params, timeout):
+        raise httpx.ConnectTimeout("handshake timed out")
+
+    monkeypatch.setattr(images.httpx, "get", always_times_out)
+    with pytest.raises(httpx.ConnectTimeout):
+        images.search_deezer("artist", "Mastodon")

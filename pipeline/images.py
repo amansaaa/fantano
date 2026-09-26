@@ -48,6 +48,9 @@ DEEZER_PAUSE_SECONDS = 0.12
 DEEZER_QUOTA_ERROR_CODE = 4
 DEEZER_MAX_ATTEMPTS = 3
 DEEZER_QUOTA_WAIT_SECONDS = 5
+# a timeout or dropped connection is usually gone a few seconds later. one of these ended a
+# multi-hour run once, so they're retried instead of stopping everything
+NETWORK_RETRY_WAIT_SECONDS = 10
 REQUEST_TIMEOUT_SECONDS = 20
 
 # how close names and titles have to be (0-100)
@@ -85,7 +88,8 @@ def search_deezer(kind: str, query: str) -> list[dict]:
     """runs one deezer search ("artist", "album", or "track") and returns its results.
 
     results are saved in data/deezer/{kind}/{query_key}.json, so a rerun never asks twice.
-    raises httpx.HTTPError if deezer keeps failing.
+    a "slow down" answer or a network hiccup (timeout, dropped connection) is retried after
+    a short wait. raises httpx.HTTPError if deezer keeps failing.
     """
     cache_name = to_name_key(query)[:MAX_CACHE_NAME_LENGTH]
     cache_file = DEEZER_CACHE_DIR / kind / f"{cache_name}.json"
@@ -95,7 +99,14 @@ def search_deezer(kind: str, query: str) -> list[dict]:
     params = {"q": query, "limit": DEEZER_RESULTS}
     for attempt in range(1, DEEZER_MAX_ATTEMPTS + 1):
         time.sleep(DEEZER_PAUSE_SECONDS)
-        response = httpx.get(f"{DEEZER_URL}/search/{kind}", params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+        try:
+            response = httpx.get(f"{DEEZER_URL}/search/{kind}", params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+        except httpx.TransportError:
+            # TransportError covers timeouts and connections that never opened or got cut off
+            if attempt == DEEZER_MAX_ATTEMPTS:
+                raise
+            time.sleep(NETWORK_RETRY_WAIT_SECONDS)
+            continue
         response.raise_for_status()
         body = response.json()
 
