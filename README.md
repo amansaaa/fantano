@@ -178,6 +178,20 @@ connections
 - A search can return anything, so code picks the result: the same artist (a duo like "Erykah Badu & The Alchemist" matches either member), and the closest title ("Materia" and not "Materia 2"). When several artists share a name, the most popular one wins.
 - First run: 233/235 artist photos, 28/28 album covers, 168/179 song covers. Anything without a match shows a gray placeholder.
 
+### Web app
+
+- **Home:** search his reviewed artists (MySQL's collation ignores case and accents, so "curio" finds "Curió Curió"), with covers of his newest reviews floating around the search box.
+- **Artist page:** the artist's reviews, the artists he linked them to, and up to 12 songs he'd recommend from those artists. Each song comes with his words and a link to the exact second in the video.
+- **Every read is plain SQL at request time**, never during `next build`, so the build (and CI) needs no database. The similar-artists grid is a single query using CTEs and window functions:
+
+```
+Phoebe Bridgers                                 grid card
+  "Lucy Dacus ... are in the mix" (2 links) ──►  Lucy Dacus · Collaborator
+  "sounds almost Bjorkish"        (1 link)  ──►  Björk · Sounds like
+```
+
+- The "songs he'd recommend" rule is a small pure function (round-robin across the grid, skipping Contrast cards, up to 12) with its own tests.
+
 ### Database
 
 **Why a database instead of JSON files?** With JSON files we'd need to load everything into memory and write the core logic ourselves: grouping artists by connection, counting distinct videos, picking timestamps, etc. With a database that's a single query. A database also enforces foreign keys and uniqueness, and a `CHECK` constraint makes sure every spoken connection has a timestamp.

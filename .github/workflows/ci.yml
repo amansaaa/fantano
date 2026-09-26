@@ -4,12 +4,12 @@
 # three jobs, they run at the same time:
 #   pipeline - installs the exact locked packages, runs the linter, then runs all the tests
 #   schema   - starts a real MySQL 8.4 and loads db/schema.sql into it, to prove the tables still build
-#   web      - installs the exact locked packages, then lints, type-checks, and builds the next.js app
+#   web      - installs the exact locked packages, then lints, type-checks, tests, and builds the next.js app
 #
 # no API keys or secrets are used here: the tests never touch YouTube, Gemini, or a real database.
 # to run the same checks on your mac:
 #   cd pipeline && uv run ruff check . && uv run pytest
-#   cd web && npm run lint && npm run typecheck && npm run build
+#   cd web && npm run lint && npm run typecheck && npm test && npm run build
 
 name: CI
 
@@ -110,6 +110,10 @@ jobs:
       # checkout has no .next/, so typegen creates them first or tsc can't find them
       - name: Type check
         run: npm run typecheck
+
+      # the pure logic (the round-robin track rule, watch links). no database, like the pipeline tests
+      - name: Test
+        run: npm test
 
       # no database here on purpose: every page that reads MySQL is rendered per request,
       # so the build never runs a query. if one ever did, this step would fail
