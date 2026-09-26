@@ -3,6 +3,7 @@
 <img width="1910" height="912" alt="Screenshot 2026-09-26 at 7 28 53 PM" src="https://github.com/user-attachments/assets/f2b01565-7e80-4191-af9a-89d7eee96896" />
 <img width="1892" height="917" alt="Screenshot 2026-09-26 at 7 29 39 PM" src="https://github.com/user-attachments/assets/210407c5-68b1-4945-af9a-c5e7ded8bf22" />
 
+
 Search for an artist Anthony Fantano (theneedledrop) has reviewed and see which artists he connected them to, plus the songs he recommends from those artists. Every connection and recommendation links to the exact moment in the video where he said it.
 
 > **Status:** the whole pipeline is built and tested end to end. The one missing input is **transcripts**: YouTube lets one IP download captions for only ~15 videos a day, and there are ~4,000 videos to cover. So the live site runs on what Fantano **writes** in his titles and descriptions (reviews, scores, fav tracks, best tracks, "ft." credits). What he **says** (comparisons, quotes, timestamps) is the part waiting on captions. See [Design changes](#design-changes).
