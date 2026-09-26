@@ -15,12 +15,15 @@
 # needs, once: brew install cloud-sql-proxy, and `gcloud auth application-default login`
 # (the proxy logs in to google with those credentials, no ip allowlist needed)
 #
-# reads:  the local fantano database
+# reads:  the local fantano database, and the cloud sql root password from secret manager
+#         (secret "cloudsql-root-password"), so there's no password to type or keep anywhere
 # writes: data/dump.sql (the last dump, handy as a backup) and the fantano database on cloud sql
 
 set -euo pipefail
 
-INSTANCE="fantano-amansa:northamerica-northeast1:fantano-db"
+PROJECT="fantano-amansa"
+INSTANCE="$PROJECT:northamerica-northeast1:fantano-db"
+ROOT_PASSWORD_SECRET="cloudsql-root-password"
 # 3306 is taken by the local MySQL, so the tunnel uses the next port
 PROXY_PORT=3307
 DUMP_FILE="data/dump.sql"
@@ -40,8 +43,8 @@ docker compose exec -T mysql sh -c \
 
 # --- 2. open the tunnel ---
 
-read -r -s -p "cloud sql root password: " cloud_root_password
-echo
+# fetched fresh each run and only kept in this variable, never written to disk
+cloud_root_password=$(gcloud secrets versions access latest --secret="$ROOT_PASSWORD_SECRET" --project="$PROJECT")
 
 echo "opening the tunnel to $INSTANCE"
 cloud-sql-proxy --port "$PROXY_PORT" "$INSTANCE" > /dev/null 2>&1 &
