@@ -1,12 +1,17 @@
-# CI: checks every push and pull request, so a broken change shows up as a red x on GitHub
-# instead of being found later while running the pipeline.
+# CI/CD: checks every push and pull request, so a broken change shows up as a red x on GitHub
+# instead of being found later while running the pipeline. a push to main that passes every
+# check is then deployed to cloud run on its own.
 #
-# three jobs, they run at the same time:
+# three check jobs, they run at the same time:
 #   pipeline - installs the exact locked packages, runs the linter, then runs all the tests
 #   schema   - starts a real MySQL 8.4 and loads db/schema.sql into it, to prove the tables still build
 #   web      - installs the exact locked packages, then lints, type-checks, tests, and builds the next.js app
+# then, only for pushes to main and only if all three passed:
+#   deploy   - builds the web image, pushes it to artifact registry, and puts it live on cloud run
 #
-# no API keys or secrets are used here: the tests never touch YouTube, Gemini, or a real database.
+# the checks use no API keys or secrets: the tests never touch YouTube, Gemini, or a real database.
+# deploy logs in to google cloud with workload identity federation (github proves who it is
+# with a short-lived token), so there's no google key stored in github at all. setup: CLAUDE.md §10.
 # to run the same checks on your mac:
 #   cd pipeline && uv run ruff check . && uv run pytest
 #   cd web && npm run lint && npm run typecheck && npm test && npm run build
@@ -119,3 +124,44 @@ jobs:
       # so the build never runs a query. if one ever did, this step would fail
       - name: Build
         run: npm run build
+
+  # --- deploy the web app to cloud run (pushes to main only, after every check passed) ---
+  deploy:
+    needs: [pipeline, schema, web]
+    # pull requests only get checked, never deployed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # id-token: write lets this job ask github for the short-lived token google trusts
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # tagged with the commit, so every cloud run revision points at the exact code it runs
+      IMAGE: northamerica-northeast1-docker.pkg.dev/fantano-amansa/fantano/web:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # trades github's token for google credentials as the github-deployer service account.
+      # google only accepts tokens from this repo (the pool's attribute condition, CLAUDE.md §10)
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/731244264806/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-deployer@fantano-amansa.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # lets docker push log in to artifact registry with those credentials
+      - name: Log docker in to artifact registry
+        run: gcloud auth configure-docker northamerica-northeast1-docker.pkg.dev --quiet
+
+      # the runner is already x86 like cloud run, so no --platform flag needed (unlike the mac)
+      - name: Build the image
+        run: docker build -t "$IMAGE" web
+
+      - name: Push the image
+        run: docker push "$IMAGE"
+
+      # only the image changes: cloud run keeps everything else from the last deploy (service
+      # account, cloud sql socket, env vars, the password secret, instance limits)
+      - name: Deploy to cloud run
+        run: gcloud run deploy fantano-web --image "$IMAGE" --region northamerica-northeast1 --project fantano-amansa --quiet
