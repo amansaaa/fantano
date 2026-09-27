@@ -164,4 +164,4 @@ jobs:
       # only the image changes: cloud run keeps everything else from the last deploy (service
       # account, cloud sql socket, env vars, the password secret, instance limits)
       - name: Deploy to cloud run
-        run: gcloud run deploy fantano-web --image "$IMAGE" --region northamerica-northeast1 --project fantano-amansa --quiet
+        run: gcloud run deploy fantano-web --image "$IMAGE" --region us-central1 --project fantano-amansa --quiet
