@@ -6,7 +6,7 @@
 
 Search for an artist Anthony Fantano (theneedledrop) has reviewed and see which artists he connected them to, plus the songs he recommends from those artists. Every connection and recommendation links to the exact moment in the video where he said it.
 
-**Live:** https://fantano-web-ruexfxzg4a-nn.a.run.app
+**Try it now:** https://fantano-web-731244264806.northamerica-northeast1.run.app/
 
 > **Status:** the whole pipeline is built and tested end to end. The one missing input is **transcripts**: YouTube lets one IP download captions for only ~15 videos a day, and there are ~4,000 videos to cover. So the live site runs on what Fantano **writes** in his titles and descriptions (reviews, scores, fav tracks, best tracks, "ft." credits). What he **says** (comparisons, quotes, timestamps) is the part waiting on captions. See [Design changes](#design-changes).
 
